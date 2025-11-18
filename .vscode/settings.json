@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "forward_fold.C": "cpp",
+        "create_response_matrix_Pi0.C": "cpp",
+        "create_response_matrix_NueNuebar.C": "cpp",
+        "response_matrix_utils.C": "cpp",
+        "process_GENIE_events.C": "cpp",
+        "process_spectra.C": "cpp"
+    }
+}

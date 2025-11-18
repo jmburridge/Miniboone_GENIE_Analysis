@@ -28,14 +28,12 @@
 // User must supply correct MiniBooNE LEE bin edges here.
 //=======================================================================
 
-static const int NBINS = 20;   // Example; adjust to actual value
+static const int NBINS = 11; 
 
 double LEE_bins[NBINS+1] = {
-    0.0, 0.1, 0.2, 0.3, 0.4,   // Replace with official MiniBooNE LEE edges
-    0.5, 0.6, 0.7, 0.8, 0.9,
-    1.0, 1.1, 1.2, 1.3, 1.4,
-    1.5, 1.6, 1.7, 1.8, 1.9,
-    2.0
+        0.2, 0.3, 0.375, 0.475, 0.55, // Miniboone LEE bin edges
+        0.675, 0.8, 0.95, 1.1, 1.3,
+        1.5, 3.0
 };
 
 //=======================================================================

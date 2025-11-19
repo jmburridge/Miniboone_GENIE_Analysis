@@ -15,200 +15,211 @@
 //
 ///////////////////////////////////////////////////////////////
 
+static const char* PATH_BACKGROUND_TREES =
+    "../DigitisePlot/background_event_trees.root";
 
-#include "TFile.h"
-#include "TH1.h"
-#include "TH2.h"
-#include "TString.h"
-#include <iostream>
-#include <vector>
-#include <cmath>
+static const char* PATH_PI0_MATRIX =
+    "../Matrix_macros/response_matrix_root_files/response_pi0_LEE.root";
 
-//=======================================================================
-// User must supply correct MiniBooNE LEE bin edges here.
-//=======================================================================
+static const char* PATH_DELTA_MATRIX =
+    "../Matrix_macros/response_matrix_root_files/response_ncdeltas_LEE.root";
 
-static const int NBINS = 11; 
+static const char* PATH_NUE_MATRIX =
+   "../Matrix_macros/response_matrix_root_files/response_nues_LEE.root";
 
+// ------------------------------------------------------------
+// Response histogram names — EDIT IF NEEDED
+// ------------------------------------------------------------
+static const char* RESP_PI0_NAME   = "h_resp_LEE";
+static const char* RESP_DELTA_NAME = "h_resp_LEE";
+static const char* RESP_NUE_NAME   = "h_resp_LEE";
+
+// ------------------------------------------------------------
+// Output file (also hardcoded)
+// ------------------------------------------------------------
+static const char* PATH_OUTPUT =
+    "forward_folds_output.root";
+
+// ------------------------------------------------------------
+// LEE binning scheme (truth-energy variable binning)
+// ------------------------------------------------------------
+static const int NBINS = 11;
 double LEE_bins[NBINS+1] = {
-        0.2, 0.3, 0.375, 0.475, 0.55, // Miniboone LEE bin edges
-        0.675, 0.8, 0.95, 1.1, 1.3,
-        1.5, 3.0
+    0.2, 0.3, 0.375, 0.475, 0.55,
+    0.675, 0.8, 0.95, 1.1, 1.3,
+    1.5, 3.0
 };
 
-//=======================================================================
-// Utility: compare two arrays of double bin edges
-//=======================================================================
-bool CheckBinEdges(const TAxis* ax, const double* refEdges, int nBins)
-{
-    if (ax->GetNbins() != nBins) return false;
+// ------------------------------------------------------------
+// PassOsc requirement
+// ------------------------------------------------------------
+static const bool REQUIRE_PASSOSC = true;
 
-    for (int i = 0; i <= nBins; i++) {
-        double diff = std::fabs(ax->GetBinLowEdge(i+1) - refEdges[i]);
-        if (diff > 1e-9) return false;
+#include "TFile.h"
+#include "TTree.h"
+#include "TH1D.h"
+#include "TH2D.h"
+#include <iostream>
+#include <cmath>
+
+// ------------------------------------------------------------
+// Build truth histogram with LEE bins
+// ------------------------------------------------------------
+TH1D* BuildTruthLEE(TTree* t, const char* hname)
+{
+    if (!t) {
+        std::cerr << "[BuildTruthLEE] ERROR: null tree " << hname << std::endl;
+        return nullptr;
     }
-    return true;
+
+    Float_t NuMomT = 0;
+    Float_t Weight = 1;
+    Bool_t  PassOsc = true;
+
+    t->SetBranchStatus("*",0);
+    t->SetBranchStatus("NuMomT",   1);
+    t->SetBranchStatus("Weight",  1);
+    t->SetBranchStatus("PassOsc", 1);
+
+    t->SetBranchAddress("NuMomT",&NuMomT);
+    t->SetBranchAddress("Weight",&Weight);
+    t->SetBranchAddress("PassOsc",&PassOsc);
+
+    TH1D* h = new TH1D(hname, hname, NBINS, LEE_bins);
+    h->Sumw2();
+    h->Reset();
+
+    Long64_t n = t->GetEntries();
+    for (Long64_t i = 0; i < n; i++) {
+        t->GetEntry(i);
+        if (REQUIRE_PASSOSC && !PassOsc) continue;
+        h->Fill(NuMomT, Weight);
+    }
+
+    return h;
 }
 
-//=======================================================================
-// Utility: Validate that a response matrix matches canonical LEE binning
-//=======================================================================
-bool ValidateResponseMatrix(TH2* h, const char* name)
+// ------------------------------------------------------------
+// Forward-folding: reco_i = sum_j R(i,j) * truth_j
+// Assumes X=reco, Y=true
+// ------------------------------------------------------------
+TH1D* ForwardFold(const TH1D* hTruth, const TH2D* hResp, const char* outName)
 {
-    if (!h) {
-        std::cerr << "ERROR: Missing response matrix: " << name << "\n";
-        return false;
+    if (!hTruth || !hResp) {
+        std::cerr << "[ForwardFold] ERROR: null inputs." << std::endl;
+        return nullptr;
     }
 
-    // Must be square
-    if (h->GetNbinsX() != h->GetNbinsY()) {
-        std::cerr << "ERROR: Response matrix " << name
-                  << " is not square: "
-                  << h->GetNbinsX() << "x" << h->GetNbinsY() << "\n";
-        return false;
-    }
+    int nTruth = hResp->GetNbinsY();
+    int nReco  = hResp->GetNbinsX();
 
-    // Must match LEE reco binning (x-axis)
-    if (!CheckBinEdges(h->GetXaxis(), LEE_bins, NBINS)) {
-        std::cerr << "ERROR: Response matrix " << name
-                  << " has incorrect reconstructed-energy binning.\n";
-        return false;
-    }
+    double* recoEdges = new double[nReco+1];
+    for (int b=1; b<=nReco+1; ++b)
+        recoEdges[b-1] = hResp->GetXaxis()->GetBinLowEdge(b);
 
-    // Must match LEE true binning (y-axis)
-    if (!CheckBinEdges(h->GetYaxis(), LEE_bins, NBINS)) {
-        std::cerr << "ERROR: Response matrix " << name
-                  << " has incorrect true-energy binning.\n";
-        return false;
-    }
+    TH1D* hReco = new TH1D(outName, outName, nReco, recoEdges);
+    hReco->Sumw2();
+    hReco->Reset();
+    delete [] recoEdges;
 
-    std::cout << "Validated response matrix: " << name << "\n";
-    return true;
-}
+    for (int j=1; j<=nTruth; j++) {
+        double Tj = hTruth->GetBinContent(j);
+        if (Tj == 0) continue;
 
-//=======================================================================
-// Utility: Validate that a truth spectrum matches canonical LEE binning
-//=======================================================================
-bool ValidateTruthSpectrum(TH1* h, const char* name)
-{
-    if (!h) {
-        std::cerr << "ERROR: Missing truth spectrum: " << name << "\n";
-        return false;
-    }
+        for (int i=1; i<=nReco; i++) {
+            double R = hResp->GetBinContent(i,j);
+            double contrib = Tj * R;
 
-    if (h->GetNbinsX() != NBINS) {
-        std::cerr << "ERROR: Truth spectrum " << name
-                  << " has wrong number of bins: "
-                  << h->GetNbinsX() << " (expected " << NBINS << ")\n";
-        return false;
-    }
+            double old = hReco->GetBinContent(i);
+            double err = hReco->GetBinError(i);
 
-    if (!CheckBinEdges(h->GetXaxis(), LEE_bins, NBINS)) {
-        std::cerr << "ERROR: Truth spectrum " << name
-                  << " has incorrect true-energy binning.\n";
-        return false;
-    }
-
-    std::cout << "Validated truth spectrum: " << name << "\n";
-    return true;
-}
-
-//=======================================================================
-// MAIN MACRO
-//=======================================================================
-void ForwardFoldMiniBooNE(const char* responseFile,
-                          const char* truthFile,
-                          const char* recoFile)
-{
-    std::cout << "----------------------------------------------------\n";
-    std::cout << " Forward-Folding with Strict MiniBooNE LEE Binning\n";
-    std::cout << "----------------------------------------------------\n";
-
-    // Open input files
-    TFile* fResp = TFile::Open(responseFile, "READ");
-    if (!fResp || fResp->IsZombie()) {
-        std::cerr << "ERROR: Could not open response file.\n";
-        return;
-    }
-
-    TFile* fTruth = TFile::Open(truthFile, "READ");
-    if (!fTruth || fTruth->IsZombie()) {
-        std::cerr << "ERROR: Could not open truth spectra file.\n";
-        return;
-    }
-
-    //--------------------------------------------------------------
-    // Load response matrices
-    //--------------------------------------------------------------
-    TH2D* rm_NCDelta = (TH2D*)fResp->Get("ResponseMatrix_NCDelta");
-    TH2D* rm_Pi0     = (TH2D*)fResp->Get("ResponseMatrix_Pi0");
-    TH2D* rm_Nue     = (TH2D*)fResp->Get("ResponseMatrix_Nue");
-
-    //--------------------------------------------------------------
-    // Validate response matrices
-    //--------------------------------------------------------------
-    if (!ValidateResponseMatrix(rm_NCDelta, "ResponseMatrix_NCDelta")) return;
-    if (!ValidateResponseMatrix(rm_Pi0,     "ResponseMatrix_Pi0"))     return;
-    if (!ValidateResponseMatrix(rm_Nue,     "ResponseMatrix_Nue"))     return;
-
-    //--------------------------------------------------------------
-    // Load truth spectra
-    //--------------------------------------------------------------
-    TH1D* true_NCDelta = (TH1D*)fTruth->Get("Truth_NCDelta");
-    TH1D* true_Pi0     = (TH1D*)fTruth->Get("Truth_Pi0");
-    TH1D* true_Nue     = (TH1D*)fTruth->Get("Truth_Nue");
-
-    //--------------------------------------------------------------
-    // Validate truth spectra
-    //--------------------------------------------------------------
-    if (!ValidateTruthSpectrum(true_NCDelta, "Truth_NCDelta")) return;
-    if (!ValidateTruthSpectrum(true_Pi0,     "Truth_Pi0"))     return;
-    if (!ValidateTruthSpectrum(true_Nue,     "Truth_Nue"))     return;
-
-    //--------------------------------------------------------------
-    // Forward folding function: M × T
-    //--------------------------------------------------------------
-    auto ForwardFold = [&](TH2D* response, TH1D* truth, const char* name) {
-
-        TH1D* reco = new TH1D(name, name, NBINS, LEE_bins);
-
-        for (int i = 1; i <= NBINS; i++) {
-            double sum = 0.0;
-            for (int j = 1; j <= NBINS; j++) {
-                sum += response->GetBinContent(i, j) *
-                       truth->GetBinContent(j);
-            }
-            reco->SetBinContent(i, sum);
+            hReco->SetBinContent(i, old + contrib);
+            hReco->SetBinError(i, std::sqrt(err*err + std::fabs(contrib)));
         }
+    }
 
-        return reco;
-    };
+    return hReco;
+}
 
-    //--------------------------------------------------------------
-    // Perform forward folding
-    //--------------------------------------------------------------
-    TH1D* reco_NCDelta = ForwardFold(rm_NCDelta, true_NCDelta, "Reco_NCDelta");
-    TH1D* reco_Pi0     = ForwardFold(rm_Pi0,     true_Pi0,     "Reco_Pi0");
-    TH1D* reco_Nue     = ForwardFold(rm_Nue,     true_Nue,     "Reco_Nue");
-
-    //--------------------------------------------------------------
-    // Write outputs
-    //--------------------------------------------------------------
-    TFile* fOut = TFile::Open(recoFile, "RECREATE");
-    if (!fOut || fOut->IsZombie()) {
-        std::cerr << "ERROR: Could not create output file.\n";
+// ------------------------------------------------------------
+// Main function (HARD-CODED PATHS)
+// ------------------------------------------------------------
+void ForwardFoldMiniBooNE()
+{
+    // ------------------------
+    // Load background trees
+    // ------------------------
+    TFile* fT = TFile::Open(PATH_BACKGROUND_TREES, "READ");
+    if (!fT || fT->IsZombie()) {
+        std::cerr << "ERROR: Cannot open background tree file: "
+                  << PATH_BACKGROUND_TREES << std::endl;
         return;
     }
 
-    reco_NCDelta->Write();
-    reco_Pi0->Write();
-    reco_Nue->Write();
+    TTree* tPi0    = (TTree*)fT->Get("pi0");
+    TTree* tDelta  = (TTree*)fT->Get("delta");
+    TTree* tNuePip = (TTree*)fT->Get("nuepip");
+    TTree* tNueKp  = (TTree*)fT->Get("nuekp");
+    TTree* tNueK0  = (TTree*)fT->Get("nuek0");
+
+    // ------------------------
+    // Build truth histograms
+    // ------------------------
+    TH1D* hPi0   = BuildTruthLEE(tPi0, "hTruth_pi0");
+    TH1D* hDelta = BuildTruthLEE(tDelta, "hTruth_delta");
+
+    TH1D* hNuepip = BuildTruthLEE(tNuePip, "hTruth_nuepip");
+    TH1D* hNuekp  = BuildTruthLEE(tNueKp, "hTruth_nuekp");
+    TH1D* hNuek0  = BuildTruthLEE(tNueK0, "hTruth_nuek0");
+
+    // Sum intrinsic nu_e components
+    TH1D* hNue = nullptr;
+    if (hNuepip) {
+        hNue = (TH1D*)hNuepip->Clone("hTruth_nue");
+        if (hNuekp) hNue->Add(hNuekp);
+        if (hNuek0) hNue->Add(hNuek0);
+    }
+
+    // ------------------------
+    // Load response matrices
+    // ------------------------
+    TFile* fRpi0   = TFile::Open(PATH_PI0_MATRIX, "READ");
+    TFile* fRdelta = TFile::Open(PATH_DELTA_MATRIX, "READ");
+    TFile* fRnue   = TFile::Open(PATH_NUE_MATRIX, "READ");
+
+    TH2D* Rpi0   = (TH2D*)fRpi0  ->Get(RESP_PI0_NAME);
+    TH2D* Rdelta = (TH2D*)fRdelta->Get(RESP_DELTA_NAME);
+    TH2D* Rnue   = (TH2D*)fRnue  ->Get(RESP_NUE_NAME);
+
+    // ------------------------
+    // Forward folding
+    // ------------------------
+    TH1D* FFpi0   = (hPi0   && Rpi0)   ? ForwardFold(hPi0,   Rpi0,   "hReco_pi0")   : nullptr;
+    TH1D* FFdelta = (hDelta && Rdelta) ? ForwardFold(hDelta, Rdelta, "hReco_delta") : nullptr;
+    TH1D* FFnue   = (hNue   && Rnue)   ? ForwardFold(hNue,   Rnue,   "hReco_nue")   : nullptr;
+
+    // ------------------------
+    // Write output
+    // ------------------------
+    TFile* fOut = TFile::Open(PATH_OUTPUT, "RECREATE");
+    if (!fOut || fOut->IsZombie()) {
+        std::cerr << "ERROR: Cannot create output file: " << PATH_OUTPUT << std::endl;
+        return;
+    }
+
+    if (hPi0)   hPi0->Write();
+    if (hDelta) hDelta->Write();
+    if (hNuepip) hNuepip->Write();
+    if (hNuekp)  hNuekp->Write();
+    if (hNuek0)  hNuek0->Write();
+    if (hNue)    hNue->Write();
+
+    if (FFpi0)   FFpi0->Write();
+    if (FFdelta) FFdelta->Write();
+    if (FFnue)   FFnue->Write();
 
     fOut->Close();
-    fResp->Close();
-    fTruth->Close();
 
-    std::cout << "All reconstructed spectra successfully written to: "
-              << recoFile << "\n";
-    std::cout << "----------------------------------------------------\n";
+    std::cout << "[ForwardFold_LEE] Finished. Output written to:\n"
+              << PATH_OUTPUT << std::endl;
 }

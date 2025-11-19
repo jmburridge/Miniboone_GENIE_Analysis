@@ -5,6 +5,7 @@
         "create_response_matrix_NueNuebar.C": "cpp",
         "response_matrix_utils.C": "cpp",
         "process_GENIE_events.C": "cpp",
-        "process_spectra.C": "cpp"
+        "process_spectra.C": "cpp",
+        "build_moneyplot.C": "cpp"
     }
 }

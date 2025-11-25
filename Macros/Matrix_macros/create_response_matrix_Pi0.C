@@ -1,9 +1,15 @@
-// Pi0ResponseMatrix_indexed.C
-// Builds π0 response matrices (energy & momentum) and classifies π0 events
-// Now also produces a separate MiniBooNE LEE-binned energy response matrix
-// in a separate ROOT file.
-//'Technote-style' binning scheme originally from MiniBooNE technote 214: https://microboone-docdb.fnal.gov/cgi-bin/sso/RetrieveFile?docid=9914&filename=unfolding_v2.0.pdf&version=2
-//MinibooNE LEE binning scheme from MiniBooNE LEE analysis: https://arxiv.org/abs/1805.12028
+// ============================================================================
+// Final Clean π0 Response Matrix Macro (Improved)
+// Energy-only, no CC/NC, no momentum, no NUANCE classification
+// Standardised ROOT outputs only:
+//   - response_pi0.root (9-bin technote format)
+//   - response_pi0_LEE.root (11-bin LEE format)
+// ROOT files saved to:
+//   /exp/uboone/app/users/jburridg/Geometry/Analysis/Pi0/Pi0_Root_Files/
+// PNGs saved to:
+//   /exp/uboone/app/users/jburridg/Geometry/Analysis/Pi0/Pi0_Histograms/
+// Professional PNG naming + original colour scheme + stat boxes + improved margins
+// ============================================================================
 
 #include <iostream>
 #include <vector>
@@ -15,706 +21,331 @@
 #include "TTree.h"
 #include "TH1D.h"
 #include "TH2D.h"
-#include "TH1F.h"
 #include "TStyle.h"
 #include "TLegend.h"
 #include "TPad.h"
 
-#include "MiniBooNEDatasets2023/CombinedFunctions_from_Fortran/CombinedTypes.h"
-#include "MiniBooNEDatasets2023/CombinedFunctions_from_Fortran/CombinedFunctions.h"
-#include "MiniBooNEDatasets2023/CombinedFunctions_from_Fortran/CombinedFunctions.cxx"
+#include "../../MiniBooNEDatasets2023/CombinedFunctions_from_Fortran/CombinedTypes.h"
+#include "../../MiniBooNEDatasets2023/CombinedFunctions_from_Fortran/CombinedFunctions.h"
+#include "../../MiniBooNEDatasets2023/CombinedFunctions_from_Fortran/CombinedFunctions.cxx"
 
 using namespace sp;
 
 // -----------------------------------------------------------------------------
-// Helper functions
-// -----------------------------------------------------------------------------
-bool CheckPointers(std::vector<int>* FSPType, std::vector<float>* Vx, std::vector<float>* Vy,
-                   std::vector<float>* Vz, std::vector<float>* MomX, std::vector<float>* MomY,
+bool CheckPointers(std::vector<int>* FSPType, std::vector<float>* Vx,
+                   std::vector<float>* Vy, std::vector<float>* Vz,
+                   std::vector<float>* MomX, std::vector<float>* MomY,
                    std::vector<float>* MomZ, std::vector<float>* MomT)
 {
     return (FSPType && Vx && Vy && Vz && MomX && MomY && MomZ && MomT);
 }
 
-void CopyAndLabelIndexed(TH2D* source, TH2D* target)
+void CopyAndLabelIndexed(TH2D* src, TH2D* idx)
 {
-    int nx = source->GetNbinsX();
-    int ny = source->GetNbinsY();
+    int nx = src->GetNbinsX();
+    int ny = src->GetNbinsY();
 
-    // Copy contents
-    for (int ix = 1; ix <= nx; ++ix) {
-        for (int iy = 1; iy <= ny; ++iy) {
-            target->SetBinContent(ix, iy, source->GetBinContent(ix, iy));
-        }
-    }
+    for (int ix = 1; ix <= nx; ix++)
+        for (int iy = 1; iy <= ny; iy++)
+            idx->SetBinContent(ix, iy, src->GetBinContent(ix, iy));
 
-    // Label axes with bin indices
-    for (int i = 1; i <= nx; ++i)
-        target->GetXaxis()->SetBinLabel(i, std::to_string(i).c_str());
-    for (int j = 1; j <= ny; ++j)
-        target->GetYaxis()->SetBinLabel(j, std::to_string(j).c_str());
+    for (int i = 1; i <= nx; i++)
+        idx->GetXaxis()->SetBinLabel(i, std::to_string(i).c_str());
+    for (int j = 1; j <= ny; j++)
+        idx->GetYaxis()->SetBinLabel(j, std::to_string(j).c_str());
 }
 
 // -----------------------------------------------------------------------------
-// Main macro
-// -----------------------------------------------------------------------------
-void Pi0ResponseMatrix()
+void create_response_matrix_Pi0()
 {
-    // -------------------------------------------------------------------------
-    // Binning schemes
-    // -------------------------------------------------------------------------
-    // Original 9-bin scheme
-    const int nbins = 9;
-    double recoE_bins[nbins + 1] = {0.150, 0.200, 0.300, 0.375, 0.475, 0.550, 0.675, 0.800, 1.000, 1.200};
-    double trueE_bins[nbins + 1] = {0.250, 0.500, 0.600, 0.700, 0.900, 1.100, 1.250, 1.500, 2.00, 3.00};
-    double trueP_bins[nbins + 1] = {0.050, 0.200, 0.300, 0.400, 0.500, 0.700, 0.750, 0.800, 1.00, 1.200};
-    double recoP_bins[nbins + 1] = {0.100, 0.300, 0.450, 0.500, 0.750, 0.800, 0.900, 1.000, 1.100, 1.200};
+    // -----------------------------------------------------------------------------
+    // GLOBAL STYLE CONFIGURATION (colour, stats, margins)
+    // -----------------------------------------------------------------------------
+    gStyle->SetPalette(kInvertedDarkBodyRadiator);
+    gStyle->SetOptStat(1110);      // entries, mean, RMS
+    gStyle->SetStatBorderSize(1);
+    gStyle->SetStatX(0.88);
+    gStyle->SetStatY(0.88);
 
-    // MiniBooNE LEE 11-bin scheme (square matrix: true and reco use same bins)
+    // -----------------------------------------------------------------------------
+    // Binning
+    // -----------------------------------------------------------------------------
+    const int nbins_true = 10;
+    const int nbins_reco = 9;
+    double recoE_bins[nbins_rec0+1] = {0.150,0.200,0.300,0.375,0.475,0.550,0.675,0.800,1.000,1.200};
+    double trueE_bins[nbins_true+1] = {0.250,0.500,0.600,0.700,0.900,1.100,1.250,1.500,2.0,3.0};
+
     const int lee_nbins = 11;
-    double lee_bins[lee_nbins + 1] = {0.2, 0.3, 0.375, 0.475, 0.55, 0.675, 0.8, 0.95, 1.1, 1.3, 1.5, 3.0};
+    double lee_bins[lee_nbins+1] = {0.2,0.3,0.375,0.475,0.55,0.675,0.8,0.95,1.1,1.3,1.5,3.0};
 
-    // -------------------------------------------------------------------------
-    // Histograms: Technote-style 9-bin scheme: energy & momentum response matrices
-    // -------------------------------------------------------------------------
-    TH1D *h_total_true       = new TH1D("h_total_true",       "Total True E_{#nu};E_{#nu} [GeV];Events",               nbins, trueE_bins);
-    TH1D *h_total_true_mom   = new TH1D("h_total_true_mom",   "Total True Pi0 Momentum;p_{Pi0} [GeV/c];Events",        nbins, trueP_bins);
-    TH1D *h_pass_true        = new TH1D("h_pass_true",        "Passed Events by True E_{#nu};E_{#nu} [GeV];Events",    nbins, trueE_bins);
-    TH1D *h_pass_true_mom    = new TH1D("h_pass_true_mom",    "Passed Events by True p_{Pi0};p_{Pi0} [GeV/c];Events",  nbins, trueP_bins);
-    TH1D *h_pass_reco_energy = new TH1D("h_pass_reco_energy", "Passed Events by Reco E_{#nu}^{QE};Reco E_{#nu}^{QE} [GeV];Events",
-                                        nbins, recoE_bins);
+    // -----------------------------------------------------------------------------
+    // Energy-only histograms
+    // -----------------------------------------------------------------------------
+    TH1D* h_total_true = new TH1D("h_total_true",
+        "Total True E_{#nu};E_{#nu} [GeV];Events", nbins, trueE_bins);
 
-    TH2D *h_response_E = new TH2D("h_response_E",
-                                  "Reco vs True E_{#nu};Reco E_{#nu}^{QE} [GeV];True E_{#nu} [GeV]",
-                                  nbins, recoE_bins, nbins, trueE_bins);
-    TH2D *h_response_P = new TH2D("h_response_P",
-                                  "Reco vs True p_{Pi0};Reco E_{#nu}^{QE} [GeV];True p_{Pi0} [GeV/c]",
-                                  nbins, recoP_bins, nbins, trueP_bins);
+    TH1D* h_pass_true = new TH1D("h_pass_true",
+        "Passed True E_{#nu};E_{#nu} [GeV];Events", nbins, trueE_bins);
 
-    TH2D *h_response_E_CC = new TH2D("h_response_E_CC",
-                                     "Reco vs True E_{#nu} (CC);Reco E_{#nu}^{QE} [GeV];True E_{#nu} [GeV]",
-                                     nbins, recoE_bins, nbins, trueE_bins);
-    TH2D *h_response_E_NC = new TH2D("h_response_E_NC",
-                                     "Reco vs True E_{#nu} (NC);Reco E_{#nu}^{QE} [GeV];True E_{#nu} [GeV]",
-                                     nbins, recoE_bins, nbins, trueE_bins);
-    TH2D *h_response_P_CC = new TH2D("h_response_P_CC",
-                                     "Reco vs True p_{#pi^{0}} (CC);Reco E_{#nu}^{QE} [GeV];True p_{#pi^{0}} [GeV/c]",
-                                     nbins, recoP_bins, nbins, trueP_bins);
-    TH2D *h_response_P_NC = new TH2D("h_response_P_NC",
-                                     "Reco vs True p_{#pi^{0}} (NC);Reco E_{#nu}^{QE} [GeV];True p_{#pi^{0}} [GeV/c]",
-                                     nbins, recoP_bins, nbins, trueP_bins);
+    TH1D* h_pass_reco = new TH1D("h_pass_reco",
+        "Passed Reco E_{#nu}^{QE};Reco E_{#nu}^{QE} [GeV];Events",
+        nbins, recoE_bins);
 
-    TH1D *h_total_true_mom_CC = new TH1D("h_total_true_mom_CC",
-                                         "Total True Pi0 Momentum (CC);p_{#pi^{0}} [GeV/c];Events",
-                                         nbins, trueP_bins);
-    TH1D *h_total_true_mom_NC = new TH1D("h_total_true_mom_NC",
-                                         "Total True Pi0 Momentum (NC);p_{#pi^{0}} [GeV/c];Events",
-                                         nbins, trueP_bins);
-    TH1D *h_eff_pi0_mom_CC    = new TH1D("h_eff_pi0_mom_CC",
-                                         "Pi0 Efficiency (CC);True p_{#pi^{0}} [GeV/c];Efficiency",
-                                         nbins, trueP_bins);
-    TH1D *h_eff_pi0_mom_NC    = new TH1D("h_eff_pi0_mom_NC",
-                                         "Pi0 Efficiency (NC);True p_{#pi^{0}} [GeV/c];Efficiency",
-                                         nbins, trueP_bins);
+    TH2D* h_response_E = new TH2D("h_response_E",
+        "Response Matrix (Reco vs True E);Reco E_{#nu}^{QE};True E_{#nu}",
+        nbins, recoE_bins, nbins, trueE_bins);
 
-    TH1D *h_eff_pi0_mom = new TH1D("h_eff_pi0_mom",
-                                   "Pi0 Efficiency;True Pi0} [GeV/c];Efficiency",
-                                   nbins, trueP_bins);
-    TH1D *h_eff_pi0     = new TH1D("h_eff_pi0",
-                                   " ;True #pi_{0} Energy [GeV];Efficiency",
-                                   nbins, trueE_bins);
+    TH1D* h_eff_pi0 = new TH1D("h_eff_pi0",
+        "Pi0 Efficiency;True E_{#nu} [GeV];Efficiency",
+        nbins, trueE_bins);
 
-    TH1D *h_ratio_passRecoE_totalTrueP =
-        new TH1D("h_ratio_passRecoE_totalTrueP",
-                 "Ratio: Passed Reco E^{QE} / Total True p_{#pi^{0}};Bin;Ratio",
-                 nbins, 1, nbins + 1);
+    // -----------------------------------------------------------------------------
+    // LEE-binned histograms
+    // -----------------------------------------------------------------------------
+    TH1D* h_total_true_LEE = new TH1D("h_total_true_LEE",
+        "Total True E_{#nu} (LEE);E_{#nu} [GeV];Events", lee_nbins, lee_bins);
 
-    TH1F *h_pi0_nuance_class =
-        new TH1F("h_pi0_nuance_class", "Pi0 by NUANCEChan;Interaction Type;Events", 7, 0.5, 7.5);
+    TH1D* h_pass_true_LEE = new TH1D("h_pass_true_LEE",
+        "Passed True E_{#nu} (LEE);E_{#nu} [GeV];Events", lee_nbins, lee_bins);
 
-    const char* nuance_labels[] = {
-        "CC res (4)",
-        "NC res (6)",
-        "NC res (8)",
-        "CC #Delta^{++} (18)",
-        "CC #Delta^{+} (19)",
-        "NC #Delta^{+} (22)",
-        "NC #Delta^{0} (26)"
-    };
-    for (int i = 0; i < 7; ++i)
-        h_pi0_nuance_class->GetXaxis()->SetBinLabel(i + 1, nuance_labels[i]);
+    TH2D* h_response_E_LEE = new TH2D("h_response_E_LEE",
+        "LEE Response Matrix;Reco E_{#nu}^{QE};True E_{#nu}",
+        lee_nbins, lee_bins, lee_nbins, lee_bins);
 
-    // Histogram of event counts: CC reco, NC reco, CC total, CC passed, NC total, NC passed
-    TH1F* h_pi0_event_counts =
-        new TH1F("h_pi0_event_counts", "Pi0 Event Counts;Category;Events", 6, 0.5, 6.5);
-    h_pi0_event_counts->GetXaxis()->SetBinLabel(1, "CC Reco");
-    h_pi0_event_counts->GetXaxis()->SetBinLabel(2, "NC Reco");
-    h_pi0_event_counts->GetXaxis()->SetBinLabel(3, "CC Total");
-    h_pi0_event_counts->GetXaxis()->SetBinLabel(4, "CC Passed");
-    h_pi0_event_counts->GetXaxis()->SetBinLabel(5, "NC Total");
-    h_pi0_event_counts->GetXaxis()->SetBinLabel(6, "NC Passed");
+    long long totalEntries = 0, pi0count = 0;
 
-    // -------------------------------------------------------------------------
-    // MiniBooNE LEE-binned energy histograms (square matrix)
-    // -------------------------------------------------------------------------
-    TH1D *h_total_true_LEE = new TH1D("h_total_true_LEE",
-                                      "Total True E_{#nu} (MiniBooNE LEE);E_{#nu} [GeV];Events",
-                                      lee_nbins, lee_bins);
-    TH1D *h_pass_true_LEE  = new TH1D("h_pass_true_LEE",
-                                      "Passed Events by True E_{#nu} (MiniBooNE LEE);E_{#nu} [GeV];Events",
-                                      lee_nbins, lee_bins);
+    // -----------------------------------------------------------------------------
+    // File loop
+    // -----------------------------------------------------------------------------
+    for (int fileIndex=1; fileIndex<=10; fileIndex++)
+    {
+        std::stringstream ss;
+        ss << "../../MiniBooNEDatasets2023/output_osc_mc_detail_"
+           << fileIndex << ".root";
 
-    TH2D *h_response_E_LEE = new TH2D("h_response_E_LEE",
-                                      "Reco vs True E_{#nu} (MiniBooNE LEE);Reco E_{#nu}^{QE} [GeV];True E_{#nu} [GeV]",
-                                      lee_nbins, lee_bins,
-                                      lee_nbins, lee_bins);
+        TFile* f = TFile::Open(ss.str().c_str());
+        if (!f || f->IsZombie()) continue;
 
-    // -------------------------------------------------------------------------
-    // Counters
-    // -------------------------------------------------------------------------
-    long long totalEntries   = 0;
-    long long pi0count       = 0;
-    long long count_total_CC = 0;
-    long long count_total_NC = 0;
-    long long count_passed_CC = 0;
-    long long count_passed_NC = 0;
-    long long count_reco_CC   = 0;
-    long long count_reco_NC   = 0;
+        TTree* t = (TTree*)f->Get("MiniBooNE_CCQE");
+        if (!t) { f->Close(); continue; }
 
-    // -------------------------------------------------------------------------
-    // Loop over input ROOT files
-    // -------------------------------------------------------------------------
-    for (int fileIndex = 1; fileIndex <= 10; ++fileIndex) {
-
-        std::stringstream filename;
-        filename << "MiniBooNEDatasets2023/output_osc_mc_detail_" << fileIndex << ".root";
-        TFile* file = TFile::Open(filename.str().c_str());
-        if (!file || file->IsZombie()) {
-            continue;
-        }
-
-        TTree* tree = (TTree*)file->Get("MiniBooNE_CCQE");
-        if (!tree) {
-            file->Close();
-            continue;
-        }
-
-        int   NFSP, NUANCEChan, NuType, NuParentID;
+        int NFSP, NUANCEChan, NuType, NuParentID;
         float Energy, RecoEnuQE, Weight, NuMomT;
-        bool  PassOsc;
+        bool PassOsc;
 
-        std::vector<int>   *FSPType = nullptr;
-        std::vector<float> *Vx = nullptr, *Vy = nullptr, *Vz = nullptr;
-        std::vector<float> *MomX = nullptr, *MomY = nullptr, *MomZ = nullptr, *MomT = nullptr;
+        std::vector<int> *FSPType=nullptr;
+        std::vector<float> *Vx=nullptr, *Vy=nullptr, *Vz=nullptr;
+        std::vector<float> *MomX=nullptr, *MomY=nullptr, *MomZ=nullptr, *MomT=nullptr;
 
-        tree->SetBranchAddress("NFSP",       &NFSP);
-        tree->SetBranchAddress("FSPType",    &FSPType);
-        tree->SetBranchAddress("VertexX",    &Vx);
-        tree->SetBranchAddress("VertexY",    &Vy);
-        tree->SetBranchAddress("VertexZ",    &Vz);
-        tree->SetBranchAddress("MomX",       &MomX);
-        tree->SetBranchAddress("MomY",       &MomY);
-        tree->SetBranchAddress("MomZ",       &MomZ);
-        tree->SetBranchAddress("MomT",       &MomT);
-        tree->SetBranchAddress("NUANCEChan", &NUANCEChan);
-        tree->SetBranchAddress("NuType",     &NuType);
-        tree->SetBranchAddress("NuMomT",     &NuMomT);
-        tree->SetBranchAddress("NuParentID", &NuParentID);
-        tree->SetBranchAddress("Energy",     &Energy);
-        tree->SetBranchAddress("RecoEnuQE",  &RecoEnuQE);
-        tree->SetBranchAddress("Weight",     &Weight);
-        tree->SetBranchAddress("PassOsc",    &PassOsc);
+        // Branches
+        t->SetBranchAddress("NFSP",&NFSP);
+        t->SetBranchAddress("FSPType",&FSPType);
+        t->SetBranchAddress("VertexX",&Vx);
+        t->SetBranchAddress("VertexY",&Vy);
+        t->SetBranchAddress("VertexZ",&Vz);
+        t->SetBranchAddress("MomX",&MomX);
+        t->SetBranchAddress("MomY",&MomY);
+        t->SetBranchAddress("MomZ",&MomZ);
+        t->SetBranchAddress("MomT",&MomT);
+        t->SetBranchAddress("NUANCEChan",&NUANCEChan);
+        t->SetBranchAddress("NuType",&NuType);
+        t->SetBranchAddress("NuMomT",&NuMomT);
+        t->SetBranchAddress("NuParentID",&NuParentID);
+        t->SetBranchAddress("Energy",&Energy);
+        t->SetBranchAddress("RecoEnuQE",&RecoEnuQE);
+        t->SetBranchAddress("Weight",&Weight);
+        t->SetBranchAddress("PassOsc",&PassOsc);
 
-        int nentries = tree->GetEntries();
-        totalEntries += nentries;
+        int N = t->GetEntries();
+        totalEntries += N;
 
-        // ---------------------------------------------------------------------
-        // Event loop
-        // ---------------------------------------------------------------------
-        for (int i = 0; i < nentries; ++i) {
-
-            tree->GetEntry(i);
-            if (!CheckPointers(FSPType, Vx, Vy, Vz, MomX, MomY, MomZ, MomT)) {
+        for (int i=0; i<N; i++)
+        {
+            t->GetEntry(i);
+            if (!CheckPointers(FSPType,Vx,Vy,Vz,MomX,MomY,MomZ,MomT))
                 continue;
-            }
 
-            unsigned npi0 = sp::Pi0Details(NFSP, *FSPType, *Vx, *Vy, *Vz,
-                                           *MomX, *MomY, *MomZ, *MomT);
-            bool Event_is_pi0 = (npi0 > 0);
+            unsigned npi0 = sp::Pi0Details(
+                NFSP,*FSPType,*Vx,*Vy,*Vz,*MomX,*MomY,*MomZ,*MomT);
 
-            StackedBkgdType_t bkgd_type = StackHistoBkgd(
-                false,                        // Event_is_dirt (FIXME in future)
-                Event_is_pi0,                 // Event_is_pi0
-                static_cast<NuanceType_t>(NUANCEChan),
-                static_cast<NuType_t>(NuType),
-                static_cast<GEANT3Type_t>(NuParentID)
-            );
+            if (npi0==0) continue;
 
-            if (bkgd_type != kBKGD_PI0) {
-                continue;
-            }
+            StackedBkgdType_t bkgd =
+                StackHistoBkgd(false,true,(NuanceType_t)NUANCEChan,
+                               (NuType_t)NuType,(GEANT3Type_t)NuParentID);
 
-            // Find π0 for momentum
-            int pi0_idx = -1;
-            for (size_t j = 0; j < FSPType->size(); ++j) {
-                if (FSPType->at(j) == kPION0) {
-                    pi0_idx = (int)j;
-                    break;
-                }
-            }
-            if (pi0_idx == -1) {
-                continue;
-            }
+            if (bkgd != kBKGD_PI0) continue;
 
-            // NUANCE classification
-            switch (NUANCEChan) {
-                case 4:  h_pi0_nuance_class->Fill(1); break;
-                case 6:  h_pi0_nuance_class->Fill(2); break;
-                case 8:  h_pi0_nuance_class->Fill(3); break;
-                case 18: h_pi0_nuance_class->Fill(4); break;
-                case 19: h_pi0_nuance_class->Fill(5); break;
-                case 22: h_pi0_nuance_class->Fill(6); break;
-                case 26: h_pi0_nuance_class->Fill(7); break;
-                default: continue;
-            }
+            pi0count++;
 
-            ++pi0count;
-
-            double p_pi0 = MomT->at(pi0_idx);  // using MomT as in original code
-            bool isCC = (NUANCEChan == 4  || NUANCEChan == 18 || NUANCEChan == 19);
-            bool isNC = (NUANCEChan == 6  || NUANCEChan == 8  ||
-                         NUANCEChan == 22 || NUANCEChan == 26);
-
-            double pot_weight = 1.0;  // placeholder scaling, same as original
-
-            // Fill truth distributions (original binning)
-            h_total_true->Fill(NuMomT, Weight);
-            h_total_true_mom->Fill(p_pi0, Weight);
-
-            if (isCC) {
-                h_total_true_mom_CC->Fill(p_pi0, Weight * pot_weight);
-                ++count_total_CC;
-            }
-            if (isNC) {
-                h_total_true_mom_NC->Fill(p_pi0, Weight * pot_weight);
-                ++count_total_NC;
-            }
-
-            // Fill truth distributions with LEE binning
-            h_total_true_LEE->Fill(NuMomT, Weight);
+            h_total_true->Fill(NuMomT,Weight);
+            h_total_true_LEE->Fill(NuMomT,Weight);
 
             if (PassOsc) {
-                // Original binning
-                h_pass_true->Fill(NuMomT, Weight * pot_weight);
-                h_pass_true_mom->Fill(p_pi0, Weight * pot_weight);
-                h_response_E->Fill(RecoEnuQE, NuMomT, Weight * pot_weight);
-                h_response_P->Fill(RecoEnuQE, p_pi0,  Weight * pot_weight);
-                h_pass_reco_energy->Fill(RecoEnuQE, Weight * pot_weight);
+                h_pass_true->Fill(NuMomT,Weight);
+                h_pass_true_LEE->Fill(NuMomT,Weight);
 
-                // LEE-binned histograms
-                h_pass_true_LEE->Fill(NuMomT, Weight * pot_weight);
-                h_response_E_LEE->Fill(RecoEnuQE, NuMomT, Weight * pot_weight);
+                h_pass_reco->Fill(RecoEnuQE,Weight);
 
-                if (isCC) {
-                    h_response_P_CC->Fill(RecoEnuQE, p_pi0, Weight * pot_weight);
-                    h_response_E_CC->Fill(RecoEnuQE, NuMomT, Weight * pot_weight);
-                    h_eff_pi0_mom_CC->Fill(p_pi0, Weight * pot_weight);
-                    ++count_passed_CC;
-                    ++count_reco_CC;
-                } else if (isNC) {
-                    h_response_P_NC->Fill(RecoEnuQE, p_pi0, Weight * pot_weight);
-                    h_response_E_NC->Fill(RecoEnuQE, NuMomT, Weight * pot_weight);
-                    h_eff_pi0_mom_NC->Fill(p_pi0, Weight * pot_weight);
-                    ++count_passed_NC;
-                    ++count_reco_NC;
-                }
+                h_response_E->Fill(RecoEnuQE,NuMomT,Weight);
+                h_response_E_LEE->Fill(RecoEnuQE,NuMomT,Weight);
             }
         }
 
-        file->Close();
+        f->Close();
     }
 
-    // -------------------------------------------------------------------------
-    // Normalise thechnote 9-bin response matrices by true distributions
-    // -------------------------------------------------------------------------
-    for (int iy = 1; iy <= nbins; ++iy) {
-        double E_true = h_total_true->GetBinContent(iy);
-        double P_true = h_total_true_mom->GetBinContent(iy);
-
-        if (E_true > 0.0) {
-            for (int ix = 1; ix <= nbins; ++ix) {
-                double val = h_response_E->GetBinContent(ix, iy);
-                h_response_E->SetBinContent(ix, iy, val / E_true);
-            }
-        }
-
-        if (P_true > 0.0) {
-            for (int ix = 1; ix <= nbins; ++ix) {
-                double val = h_response_P->GetBinContent(ix, iy);
-                h_response_P->SetBinContent(ix, iy, val / P_true);
-            }
-        }
+    // -----------------------------------------------------------------------------
+    // Normalise response matrices
+    // -----------------------------------------------------------------------------
+    for (int iy=1; iy<nbins+1; iy++) {
+        double den = h_total_true->GetBinContent(iy);
+        if (den<=0) continue;
+        for (int ix=1; ix<nbins+1; ix++)
+            h_response_E->SetBinContent(ix,iy,
+                h_response_E->GetBinContent(ix,iy)/den);
     }
 
-    // Ratio histogram: passed true E / total true p (original code)
-    for (int i = 1; i <= nbins; ++i) {
-        double recoE = h_pass_true->GetBinContent(i);
-        double trueP = h_total_true_mom->GetBinContent(i);
-        if (trueP > 0.0)
-            h_ratio_passRecoE_totalTrueP->SetBinContent(i, recoE / trueP);
-        else
-            h_ratio_passRecoE_totalTrueP->SetBinContent(i, 0.0);
+    for (int iy=1; iy<=lee_nbins; iy++) {
+        double den = h_total_true_LEE->GetBinContent(iy);
+        if (den<=0) continue;
+        for (int ix=1; ix<=lee_nbins; ix++)
+            h_response_E_LEE->SetBinContent(ix,iy,
+                h_response_E_LEE->GetBinContent(ix,iy)/den);
     }
 
-    // CC and NC response matrices by true p
-    for (int iy = 1; iy <= nbins; ++iy) {
-        double P_CC = h_total_true_mom_CC->GetBinContent(iy);
-        double P_NC = h_total_true_mom_NC->GetBinContent(iy);
-
-        if (P_CC > 0.0) {
-            for (int ix = 1; ix <= nbins; ++ix) {
-                double val = h_response_P_CC->GetBinContent(ix, iy);
-                h_response_P_CC->SetBinContent(ix, iy, val / P_CC);
-            }
-        }
-
-        if (P_NC > 0.0) {
-            for (int ix = 1; ix <= nbins; ++ix) {
-                double val = h_response_P_NC->GetBinContent(ix, iy);
-                h_response_P_NC->SetBinContent(ix, iy, val / P_NC);
-            }
+    // -----------------------------------------------------------------------------
+    // Efficiency
+    // -----------------------------------------------------------------------------
+    for (int i=1; i<=nbins; i++) {
+        double num = h_pass_true->GetBinContent(i);
+        double den = h_total_true->GetBinContent(i);
+        if (den>0) {
+            double eff = num/den;
+            double err = sqrt(eff*(1-eff)/den);
+            h_eff_pi0->SetBinContent(i,eff);
+            h_eff_pi0->SetBinError(i,err);
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Normalise LEE-binned energy response matrix (square 11x11)
-    // -------------------------------------------------------------------------
-    for (int iy = 1; iy <= lee_nbins; ++iy) {
-        double E_true_LEE = h_total_true_LEE->GetBinContent(iy);
-        if (E_true_LEE <= 0.0) continue;
+    // -----------------------------------------------------------------------------
+    // Indexed response matrix
+    // -----------------------------------------------------------------------------
+    TH2D* h_response_E_idx =
+        new TH2D("h_response_E_idx",";Reco E bin;True E bin",
+                 nbins,0,nbins, nbins,0,nbins);
+    CopyAndLabelIndexed(h_response_E,h_response_E_idx);
 
-        for (int ix = 1; ix <= lee_nbins; ++ix) {
-            double val = h_response_E_LEE->GetBinContent(ix, iy);
-            h_response_E_LEE->SetBinContent(ix, iy, val / E_true_LEE);
-        }
-    }
+    // -----------------------------------------------------------------------------
+    // Output directories
+    // -----------------------------------------------------------------------------
+    const char* png_dir =
+        "/exp/uboone/app/users/jburridg/Geometry/Analysis/Pi0/Pi0_Histograms/";
+    const char* root_dir =
+        "/exp/uboone/app/users/jburridg/Geometry/Analysis/Pi0/Pi0_Root_Files/";
 
-    // -------------------------------------------------------------------------
-    // Total π0 efficiency with binomial errors (original logic)
-    // -------------------------------------------------------------------------
-    for (int i = 1; i <= nbins; ++i) {
-        double num        = h_pass_true_mom->GetBinContent(i);
-        double den        = h_total_true_mom->GetBinContent(i);
-        double num_energy = h_pass_true->GetBinContent(i);
-        double den_energy = h_total_true->GetBinContent(i);
-
-        if (den > 0.0) {
-            double eff        = num / den;
-            double err        = std::sqrt(eff * (1.0 - eff) / den);
-            double eff_energy = (den_energy > 0.0) ? num_energy / den_energy : 0.0;
-            // NOTE: the original code uses 'eff' and 'den' for err_energy as well
-            double err_energy = std::sqrt(eff * (1.0 - eff) / den);
-
-            h_eff_pi0_mom->SetBinContent(i, eff);
-            h_eff_pi0_mom->SetBinError(i, err);
-
-            h_eff_pi0->SetBinContent(i, eff_energy);
-            h_eff_pi0->SetBinError(i, err_energy);
-        } else {
-            h_eff_pi0_mom->SetBinContent(i, 0.0);
-            h_eff_pi0_mom->SetBinError(i, 0.0);
-            h_eff_pi0->SetBinContent(i, 0.0);
-            h_eff_pi0->SetBinError(i, 0.0);
-        }
-    }
-
-    // CC π0 efficiency with binomial errors
-    for (int i = 1; i <= nbins; ++i) {
-        double num = h_eff_pi0_mom_CC->GetBinContent(i); // numerator stored here
-        double den = h_total_true_mom_CC->GetBinContent(i);
-
-        if (den > 0.0) {
-            double eff = num / den;
-            double err = std::sqrt(eff * (1.0 - eff) / den);
-            h_eff_pi0_mom_CC->SetBinContent(i, eff);
-            h_eff_pi0_mom_CC->SetBinError(i, err);
-        } else {
-            h_eff_pi0_mom_CC->SetBinContent(i, 0.0);
-            h_eff_pi0_mom_CC->SetBinError(i, 0.0);
-        }
-    }
-
-    // NC π0 efficiency with binomial errors
-    for (int i = 1; i <= nbins; ++i) {
-        double num = h_eff_pi0_mom_NC->GetBinContent(i);
-        double den = h_total_true_mom_NC->GetBinContent(i);
-
-        if (den > 0.0) {
-            double eff = num / den;
-            double err = std::sqrt(eff * (1.0 - eff) / den);
-            h_eff_pi0_mom_NC->SetBinContent(i, eff);
-            h_eff_pi0_mom_NC->SetBinError(i, err);
-        } else {
-            h_eff_pi0_mom_NC->SetBinContent(i, 0.0);
-            h_eff_pi0_mom_NC->SetBinError(i, 0.0);
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Fill event-count histogram from existing histograms
-    // -------------------------------------------------------------------------
-    h_pi0_event_counts->SetBinContent(1, h_response_P_CC->GetEntries());   // CC Reco
-    h_pi0_event_counts->SetBinContent(2, h_response_P_NC->GetEntries());   // NC Reco
-    h_pi0_event_counts->SetBinContent(3, h_total_true_mom_CC->Integral()); // CC Total
-    h_pi0_event_counts->SetBinContent(4, h_eff_pi0_mom_CC->Integral());    // CC Passed
-    h_pi0_event_counts->SetBinContent(5, h_total_true_mom_NC->Integral()); // NC Total
-    h_pi0_event_counts->SetBinContent(6, h_eff_pi0_mom_NC->Integral());    // NC Passed
-
-    // -------------------------------------------------------------------------
-    // Indexed copies of original response matrices
-    // -------------------------------------------------------------------------
-    TH2D* h_response_E_idx = new TH2D("h_response_E_idx", ";Reco E bin;True E bin",
-                                      nbins, 0, nbins, nbins, 0, nbins);
-    TH2D* h_response_P_idx = new TH2D("h_response_P_idx", ";Reco E bin;True p_{#pi^{0}} bin",
-                                      nbins, 0, nbins, nbins, 0, nbins);
-
-    CopyAndLabelIndexed(h_response_E, h_response_E_idx);
-    CopyAndLabelIndexed(h_response_P, h_response_P_idx);
-
-    // -------------------------------------------------------------------------
-    // ROOT style
-    // -------------------------------------------------------------------------
-    gStyle->SetPalette(kInvertedDarkBodyRadiator);
-    gStyle->SetPadLeftMargin(0.12);
-    gStyle->SetPadRightMargin(0.15);
-    gStyle->SetPadTopMargin(0.08);
-    gStyle->SetPadBottomMargin(0.15);
-    gStyle->SetOptStat(0);
-
-    auto DrawMatrix = [&](TH2* hist, const std::string& name)
-    {
-        TCanvas* c = new TCanvas(name.c_str(), name.c_str(), 900, 800);
-        hist->LabelsOption("h");
-        hist->Draw("COLZ");
-        c->SaveAs(Form("Pi0Analysis/%s.png", name.c_str()));
+    // -----------------------------------------------------------------------------
+    // Plotting utilities (improved margins)
+    // -----------------------------------------------------------------------------
+    auto SaveMatrix = [&](TH2* h, const char* fname){
+        TCanvas* c = new TCanvas(fname,fname,900,800);
+        c->SetLeftMargin(0.15);
+        c->SetRightMargin(0.18);
+        c->SetBottomMargin(0.14);
+        c->SetTopMargin(0.08);
+        h->LabelsOption("h");
+        h->Draw("COLZ");
+        std::string out = std::string(png_dir) + fname + ".png";
+        c->SaveAs(out.c_str());
     };
 
-    auto PlotEventsAndEfficiency =
-        [&](TH1* h_true_pass, TH1* h_reco_pass, TH1* h_eff,
-           const std::string& output_name)
-    {
-        TCanvas* c_combo = new TCanvas(("c_" + output_name).c_str(),
-                                       "Events and Efficiency", 800, 600);
-
-        TPad* pad1 = new TPad("pad1", "", 0, 0.37, 1, 1.0);
-        pad1->SetTopMargin(0.08);
-        pad1->SetBottomMargin(0.08);
-        pad1->SetLeftMargin(0.15);
-        pad1->SetRightMargin(0.08);
-        pad1->Draw();
-
-        TPad* pad2 = new TPad("pad2", "", 0, 0.0, 1, 0.33);
-        pad2->SetTopMargin(0.06);
-        pad2->SetBottomMargin(0.15);
-        pad2->SetLeftMargin(0.15);
-        pad2->SetRightMargin(0.08);
-        pad2->Draw();
-
-        pad1->cd();
-        h_true_pass->Draw("HIST E1");
-        h_reco_pass->Draw("HIST E1 SAME");
-
-        TLegend* leg = new TLegend(0.62, 0.75, 0.88, 0.88);
-        leg->AddEntry(h_true_pass, "True passed events", "l");
-        leg->AddEntry(h_reco_pass, "Reco passed events", "l");
-        leg->Draw();
-
-        pad2->cd();
-        h_eff->Draw("HIST E1");
-
-        c_combo->SaveAs(Form("Pi0Analysis/%s.png", output_name.c_str()));
+    auto Save1D = [&](TH1* h, const char* fname){
+        TCanvas* c=new TCanvas(fname,fname,800,800);
+        c->SetLeftMargin(0.15);
+        c->SetRightMargin(0.15);
+        c->SetBottomMargin(0.14);
+        c->SetTopMargin(0.08);
+        h->Draw("HIST E");
+        std::string out = std::string(png_dir) + fname + ".png";
+        c->SaveAs(out.c_str());
     };
 
-    // -------------------------------------------------------------------------
-    // Draw matrices and combo plots (original behavior)
-    // -------------------------------------------------------------------------
-    DrawMatrix(h_response_E_idx, "pi0_response_matrix_energy");
-    DrawMatrix(h_response_P_idx, "pi0_response_matrix_momentum");
-    DrawMatrix(h_response_E,     "pi0_response_matrix_energy_unindexed");
-    DrawMatrix(h_response_P,     "pi0_response_matrix_momentum_unindexed");
+    // -----------------------------------------------------------------------------
+    // Save PNGs
+    // -----------------------------------------------------------------------------
+    SaveMatrix(h_response_E,     "Pi0_ResponseMatrix_Energy");
+    SaveMatrix(h_response_E_idx, "Pi0_ResponseMatrix_Energy_Indexed");
+    SaveMatrix(h_response_E_LEE,"Pi0_ResponseMatrix_Energy_LEE");
 
-    // draw the MiniBooNE LEE-binned response matrix for inspection
-    DrawMatrix(h_response_E_LEE, "pi0_response_matrix_energy_MiniBooNELEE");
+    Save1D(h_total_true, "Pi0_TrueEnergy_Total");
+    Save1D(h_pass_true,  "Pi0_TrueEnergy_Passed");
+    Save1D(h_pass_reco,  "Pi0_RecoEnergy_Passed");
+    Save1D(h_eff_pi0,    "Pi0_Efficiency_TrueEnergy");
 
-    PlotEventsAndEfficiency(h_pass_true, h_pass_reco_energy,
-                            h_eff_pi0,
-                            "pi0_events_and_efficiency_energy");
+    // -----------------------------------------------------------------------------
+    // Standardised export (9-bin)
+    // -----------------------------------------------------------------------------
+    {
+        TH1D* h_true_export = (TH1D*)h_total_true->Clone("h_true");
+        TH1D* h_pass_export = (TH1D*)h_pass_true->Clone("h_pass");
+        TH1D* h_reco_export = (TH1D*)h_pass_reco->Clone("h_reco");
 
-    // Classification
-    TCanvas *c_class = new TCanvas("c_class", "Pi0 Classification", 800, 800);
-    h_pi0_nuance_class->SetFillColor(kOrange - 3);
-    h_pi0_nuance_class->Draw("HIST");
-    c_class->SaveAs("Pi0Analysis/Pi0_Source_Classification_MomT.png");
+        TH2D* h_smear_unorm = (TH2D*)h_response_E->Clone("h_smear_unorm");
+        TH2D* h_resp        = (TH2D*)h_response_E->Clone("h_resp");
 
-    // 1D distributions
-    TCanvas* c_trueE = new TCanvas("c_trueE", "True Neutrino Energy", 800, 800);
-    h_total_true->Draw("HIST");
-    c_trueE->SaveAs("Pi0Analysis/Pi0_Total_True_Energy_MomT.png");
+        TH2D* h_resp_index =
+            new TH2D("h_resp_index","Response indexed",
+                     nbins,0,nbins, nbins,0,nbins);
+        CopyAndLabelIndexed(h_resp,h_resp_index);
 
-    TCanvas* c_trueMom = new TCanvas("c_trueMom", "True Pi0 Momentum", 800, 800);
-    h_total_true_mom->Draw("HIST");
-    c_trueMom->SaveAs("Pi0Analysis/Pi0_Total_True_Momentum_MomT.png");
+        std::string outfile = std::string(root_dir) + "response_pi0.root";
+        TFile out(outfile.c_str(),"RECREATE");
+        h_true_export->Write();
+        h_pass_export->Write();
+        h_reco_export->Write();
+        h_smear_unorm->Write();
+        h_resp->Write();
+        h_resp_index->Write();
+        out.Close();
+    }
 
-    TCanvas* c_passE = new TCanvas("c_passE", "Passed Events by True Neutrino Energy", 800, 800);
-    h_pass_true->Draw("HIST");
-    c_passE->SaveAs("Pi0Analysis/Pi0_Passed_True_Energy_MomT.png");
+    // -----------------------------------------------------------------------------
+    // Standardised export (LEE, 11-bin)
+    // -----------------------------------------------------------------------------
+    {
+        TH1D* h_true_LEE_export = (TH1D*)h_total_true_LEE->Clone("h_true_LEE");
+        TH1D* h_pass_LEE_export = (TH1D*)h_pass_true_LEE->Clone("h_pass_LEE");
 
-    TCanvas* c_passMom = new TCanvas("c_passMom", "Passed Events by True Pi0 Momentum", 800, 800);
-    h_pass_true_mom->Draw("HIST");
-    c_passMom->SaveAs("Pi0Analysis/Pi0_Passed_True_Momentum_MomT.png");
+        TH1D* h_reco_LEE = new TH1D("h_reco_LEE","Reco LEE",lee_nbins,lee_bins);
+        for (int ix=1; ix<=lee_nbins; ix++){
+            double sum=0;
+            for (int iy=1; iy<=lee_nbins; iy++)
+                sum += h_response_E_LEE->GetBinContent(ix,iy);
+            h_reco_LEE->SetBinContent(ix,sum);
+        }
 
-    TCanvas* c_passRecoE = new TCanvas("c_passRecoE", "Passed Events by Reco Neutrino Energy", 800, 800);
-    h_pass_reco_energy->Draw("HIST");
-    c_passRecoE->SaveAs("Pi0Analysis/Pi0_Passed_Reco_Energy_MomT.png");
+        TH2D* h_smear_LEE_unorm = (TH2D*)h_response_E_LEE->Clone("h_smear_LEE_unorm");
+        TH2D* h_resp_LEE        = (TH2D*)h_response_E_LEE->Clone("h_resp_LEE");
 
-    // CC / NC response matrices
-    TCanvas* c_ecc = new TCanvas("c_ecc", "Energy Response (CC)", 800, 800);
-    h_response_E_CC->Draw("COLZ");
-    c_ecc->SaveAs("Pi0Analysis/Pi0_Response_Energy_CC_MomT.png");
+        TH2D* h_resp_index_LEE =
+            new TH2D("h_resp_index_LEE","LEE Response indexed",
+                     lee_nbins,0,lee_nbins, lee_nbins,0,lee_nbins);
+        CopyAndLabelIndexed(h_resp_LEE,h_resp_index_LEE);
 
-    TCanvas* c_enc = new TCanvas("c_enc", "Energy Response (NC)", 800, 800);
-    h_response_E_NC->Draw("COLZ");
-    c_enc->SaveAs("Pi0Analysis/Pi0_Response_Energy_NC_MomT.png");
+        std::string outfile = std::string(root_dir) + "response_pi0_LEE.root";
+        TFile out(outfile.c_str(),"RECREATE");
+        h_true_LEE_export->Write();
+        h_pass_LEE_export->Write();
+        h_reco_LEE->Write();
+        h_smear_LEE_unorm->Write();
+        h_resp_LEE->Write();
+        h_resp_index_LEE->Write();
+        out.Close();
+    }
 
-    TCanvas* c_pcc = new TCanvas("c_pcc", "Momentum Response (CC)", 800, 800);
-    h_response_P_CC->Draw("COLZ");
-    h_response_P_CC->SetMarkerColor(kWhite);
-    c_pcc->SaveAs("Pi0Analysis/Pi0_Response_Momentum_CC_MomT.png");
-
-    TCanvas* c_pnc = new TCanvas("c_pnc", "Momentum Response (NC)", 800, 800);
-    h_response_P_NC->Draw("COLZ");
-    c_pnc->SaveAs("Pi0Analysis/Pi0_Response_Momentum_NC_MomT.png");
-
-    // Ratio plot
-    TCanvas* c_ratio = new TCanvas("c_ratio", "Pass RecoE / Total True Pi0 Momentum", 800, 800);
-    h_ratio_passRecoE_totalTrueP->SetLineColor(kGreen + 2);
-    h_ratio_passRecoE_totalTrueP->SetLineWidth(2);
-    h_ratio_passRecoE_totalTrueP->Draw("HIST");
-    c_ratio->SaveAs("Pi0Analysis/Pi0_Ratio_PassRecoE_to_TotalTrueP_MomT.png");
-
-    // Efficiency vs true momentum / energy
-    gStyle->SetOptStat(0);
-
-    TCanvas* c_effMom = new TCanvas("c_effMom", "Efficiency vs True Pi0 Momentum", 800, 800);
-    h_eff_pi0_mom->SetMinimum(0);
-    c_effMom->SetLeftMargin(0.18);
-    c_effMom->SetRightMargin(0.20);
-    c_effMom->SetBottomMargin(0.18);
-    c_effMom->SetTopMargin(0.1);
-    h_eff_pi0_mom->SetLineColor(kBlue + 2);
-    h_eff_pi0_mom->SetLineWidth(2);
-    h_eff_pi0_mom->Draw("E1 P");
-    c_effMom->SaveAs("Pi0Analysis/Pi0_Efficiency_True_Momentum_MomT.png");
-
-    TCanvas* c_eff = new TCanvas("c_eff", "Efficiency vs True Pi0 Energy", 800, 800);
-    h_eff_pi0->SetMinimum(0);
-    c_eff->SetLeftMargin(0.18);
-    c_eff->SetRightMargin(0.20);
-    c_eff->SetBottomMargin(0.18);
-    c_eff->SetTopMargin(0.1);
-    h_eff_pi0->SetLineColor(kBlue + 2);
-    h_eff_pi0->SetLineWidth(2);
-    h_eff_pi0->Draw("E1 P");
-    c_eff->SaveAs("Pi0Analysis/Pi0_Efficiency_True_Energy.png");
-
-    TCanvas* c_effMom_CC = new TCanvas("c_effMom_CC", "Efficiency vs True Pi0 Momentum (CC)", 800, 800);
-    c_effMom_CC->SetLeftMargin(0.18);
-    c_effMom_CC->SetRightMargin(0.20);
-    c_effMom_CC->SetBottomMargin(0.18);
-    c_effMom_CC->SetTopMargin(0.1);
-    h_eff_pi0_mom_CC->SetMinimum(0);
-    h_eff_pi0_mom_CC->SetLineColor(kRed + 1);
-    h_eff_pi0_mom_CC->SetLineWidth(2);
-    h_eff_pi0_mom_CC->Draw("E1 P");
-    c_effMom_CC->SaveAs("Pi0Analysis/Pi0_Efficiency_True_Momentum_CC_MomT.png");
-
-    TCanvas* c_effMom_NC = new TCanvas("c_effMom_NC", "Efficiency vs True Pi0 Momentum (NC)", 800, 800);
-    c_effMom_NC->SetLeftMargin(0.18);
-    c_effMom_NC->SetRightMargin(0.20);
-    c_effMom_NC->SetBottomMargin(0.18);
-    c_effMom_NC->SetTopMargin(0.1);
-    h_eff_pi0_mom_NC->SetMinimum(0);
-    h_eff_pi0_mom_NC->SetLineColor(kBlue + 1);
-    h_eff_pi0_mom_NC->SetLineWidth(2);
-    h_eff_pi0_mom_NC->Draw("HIST");
-    h_eff_pi0_mom_NC->Draw("E1 P");
-    c_effMom_NC->SaveAs("Pi0Analysis/Pi0_Efficiency_True_Momentum_NC_MomT.png");
-
-    TCanvas* c_event_counts = new TCanvas("c_event_counts", "Pi0 Event Category Counts", 800, 800);
-    h_pi0_event_counts->SetFillColor(kAzure + 1);
-    h_pi0_event_counts->SetLineColor(kBlack);
-    h_pi0_event_counts->Draw("HIST TEXT");
-    c_event_counts->SaveAs("Pi0Analysis/Pi0_Event_Counts.png");
-
-    // Extra 1D distributions
-    TCanvas* c_recoE_dist = new TCanvas("c_recoE_dist", "Reco Energy Distribution", 800, 800);
-    h_pass_reco_energy->SetLineColor(kViolet + 1);
-    h_pass_reco_energy->SetLineWidth(2);
-    h_pass_reco_energy->Draw("HIST");
-    c_recoE_dist->SaveAs("Pi0Analysis/Pi0_Reco_Energy_Distribution_MomT.png");
-
-    TCanvas* c_passMom_dist = new TCanvas("c_passMom_dist", "Passed True Pi0 Momentum", 800, 800);
-    h_pass_true_mom->SetLineColor(kGreen + 2);
-    h_pass_true_mom->SetLineWidth(2);
-    h_pass_true_mom->Draw("HIST");
-    c_passMom_dist->SaveAs("Pi0Analysis/Pi0_Truth_Passed_Momentum_Distribution_MomT.png");
-
-    TCanvas* c_totalMom_dist = new TCanvas("c_totalMom_dist", "Total True Pi0 Momentum", 800, 800);
-    h_total_true_mom->SetLineColor(kBlue + 1);
-    h_total_true_mom->SetLineWidth(2);
-    h_total_true_mom->Draw("HIST");
-    c_totalMom_dist->SaveAs("Pi0Analysis/Pi0_Truth_Total_Momentum_Distribution_MomT.png");
-
-    // -------------------------------------------------------------------------
-    // Print event counts
-    // -------------------------------------------------------------------------
-    std::cout << "------ Pi0 Event Category Counts ------" << std::endl;
-    std::cout << "Total CC truth pi0s       : " << count_total_CC << std::endl;
-    std::cout << "Total NC truth pi0s       : " << count_total_NC << std::endl;
-    std::cout << "Passed CC pi0s (PassOsc)  : " << count_passed_CC << std::endl;
-    std::cout << "Passed NC pi0s (PassOsc)  : " << count_passed_NC << std::endl;
-    std::cout << "---------------------------------------" << std::endl;
-
-    // -------------------------------------------------------------------------
-    // Write Technote-style 9-bin outputs to ROOT 
-    // -------------------------------------------------------------------------
-    TFile *fout = new TFile("Pi0_ResponseMatrices_MomT.root", "RECREATE");
-    h_response_E->Write("Pi0_Response_Energy_MomT");
-    h_response_P->Write("Pi0_Response_Momentum_MomT");
-    h_total_true->Write("Pi0_Total_True_Energy_MomT");
-    h_total_true_mom->Write("Pi0_Total_True_Momentum_MomT");
-    h_pass_true->Write("Pi0_Passed_True_Energy_MomT");
-    h_pass_true_mom->Write("Pi0_Passed_True_Momentum_MomT");
-    h_eff_pi0_mom->Write("Pi0_Efficiency_True_Momentum_MomT");
-    h_pass_reco_energy->Write("Pi0_Passed_Reco_Energy_MomT");
-    h_ratio_passRecoE_totalTrueP->Write("Pi0_Ratio_PassRecoE_to_TotalTrueP_MomT");
-    h_total_true_mom_CC->Write("Pi0_Total_True_Momentum_CC_MomT");
-    h_total_true_mom_NC->Write("Pi0_Total_True_Momentum_NC_MomT");
-    h_eff_pi0_mom_CC->Write("Pi0_Efficiency_True_Momentum_CC_MomT");
-    h_eff_pi0_mom_NC->Write("Pi0_Efficiency_True_Momentum_NC_MomT");
-    h_pi0_nuance_class->Write("Pi0_Classification_MomT");
-    fout->Close();
-
-    // -------------------------------------------------------------------------
-    // Write MiniBooNE LEE–binned response matrix to SEPARATE ROOT file
-    // -------------------------------------------------------------------------
-    TFile *foutLEE = new TFile("Pi0_ResponseMatrix_MiniBooNELEE.root", "RECREATE");
-    h_response_E_LEE->Write("Pi0_Response_Energy_MiniBooNELEE");
-    foutLEE->Close();
-
-    // -------------------------------------------------------------------------
-    // Final summary
-    // -------------------------------------------------------------------------
-    std::cout << "Entries processed: " << totalEntries
-              << ", pi0 events: " << pi0count << std::endl;
+    // -----------------------------------------------------------------------------
+    std::cout
+        << "[PI0] Final energy-only π0 response matrices completed.\n"
+        << "      Entries processed: " << totalEntries << "\n"
+        << "      π0 events kept:    " << pi0count << std::endl;
 }

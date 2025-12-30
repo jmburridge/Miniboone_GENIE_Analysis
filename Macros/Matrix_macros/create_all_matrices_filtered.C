@@ -370,7 +370,7 @@ void create_all_matrices_filtered()
                     switch (bkg_type) {
 
                     case sp::kBKGD_NUEPIP:
-                        // *1.5 for the workshop!! DO NOT REMOVE
+                    
                         if (NuParentID == 5 && NuType == 3) {
                             h_total_true_nue->Fill(NuMomT, Weight);
                             h_total_true_LEE_nue->Fill(NuMomT, Weight);
@@ -619,10 +619,9 @@ void create_all_matrices_filtered()
     // Output directories (now All_Filtered)
     // -------------------------------------------------------------------------
     const char* png_dir  =
-        "/exp/uboone/app/users/jburridg/Geometry/Analysis/All/All_filtered/All_filtered_Histograms/";
+        "../../Outputs/Response_matrices/Osc1-10/Histograms";
     const char* root_dir =
-        "/exp/uboone/app/users/jburridg/Geometry/Analysis/All/All_filtered/All_filtered_Root_Files/";
-
+        "../../Outputs/Response_matrices/Osc1-10/Root_files";
     // -------------------------------------------------------------------------
     // Plotting helpers (filenames contain 'filtered')
     // -------------------------------------------------------------------------

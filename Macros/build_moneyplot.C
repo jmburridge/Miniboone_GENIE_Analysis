@@ -7,7 +7,7 @@
 ///////////////////////////////////////////////////////
 // ============================================================================
 // MiniBooNE Background Stack Constructor (Corrected Final Version)
-// - Dirt & Other: weighted + external dirt + exposure scaling
+// - Dirt & Other: weighted + exposure scaling
 // - Pi0 / Delta / intrinsic nue: from forward-folding, NOT scaled
 // - All MC histograms rebinned into identical 200–3000 MeV bins
 // - MiniBooNE curve from text, converted to Events/MeV

@@ -39,18 +39,17 @@ This code includes Macros for the following:
   2. To forward fold GENIE Truth data through these response matrices and output Reco data. 
   3. To build and format a plot from this reco data, comparable to the MiniBooNE LEE plot( https://arxiv.org/abs/1805.12028.)
   4. An additional macro to test these response matrices by forward folding MiniBooNE Ntuples through them to recreate the MiniBooNE plot seen in https://arxiv.org/abs/1805.12028.
-  
+
+
 ---
 
 ## Getting Started
-Explain what users need before installing:
-- Supported platforms
-- Required software or versions
-- Any assumptions
+This code requires MiniBooNE Ntuples for response matrix creation and testing which can be found in: /exp/uboone/app/users/jburridg/Geometry/Analysis/MiniBooNEDatasets2023
+
 
 ---
 
 ## Installation
-Provide clear, step-by-step installation instructions.
+
 
 

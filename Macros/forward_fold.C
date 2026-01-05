@@ -16,7 +16,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////
 
 // ============================================================================
-// ForwardFold_LEE.C  (Histogram-based version compatible with process_trees)
+// ForwardFold_LEE.C  (compatible with process_trees())
 // ============================================================================
 //
 // Inputs from process_trees():

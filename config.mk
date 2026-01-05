@@ -8,6 +8,15 @@ MATRIX_DIR  = matrices
 OUTPUT_DIR  = output
 DATA_DIR    = data
 TEST_DIR    = test
+# MiniBooNE tuples live here
+MB_DATASET_DIR = /exp/uboone/app/users/jburridg/Geometry/Analysis/MiniBooNEDatasets2023
+# Where you want matrices and plots written (project-local is best)
+MATRIX_DIR  = matrices
+PLOT_DIR    = plots/matrices
+# Dataset file pattern
+MB_PREFIX   = output_osc_mc_detail_
+MB_NFILES   = 10
+
 
 # Input data
 # LARSOFT     = $(DATA_DIR)/larsoft_output.root

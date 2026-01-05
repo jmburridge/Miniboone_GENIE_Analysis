@@ -1,8 +1,12 @@
 // ============================================================================
 // THIS MACRO IS FOR PROCESSING MINIBOONE DATA READY FOR THE 
-// FORWARD FOLDING MACRO TO TEST THE ANALYSIS CHAIN.
+// FORWARD FOLDING MACRO TO TEST THE ANALYSIS CHAIN. 
+
+// This macro tests the response matrices and selections by passing MiniBooNE data 
+// through its own response matrices. If done correctly the output should match the
+// original MiniBooNE data distributions: https://arxiv.org/pdf/1805.12028
 // 
-// Total Truth Energy (NuMomT) Spectra for:
+// Total Truth Energy (NuMomT) Spectra created for:
 //    • NuE backgrounds
 //    • Pi0 backgrounds
 //    • NCDelta backgrounds
@@ -11,12 +15,14 @@
 //     StackedBkgdType_t StackHistoBkgd(...)
 //     unsigned sp::Pi0Details(...)
 //
-// No PassOsc selection — total truth only.
 // Binned in 11-bin MiniBooNE LEE energy binning.
 // Writes single ROOT output file containing:
 //     h_true_nue_LEE
 //     h_true_pi0_LEE
 //     h_true_ncdelta_LEE
+//
+// This output file can then be passed through the forward folding test macro and 
+// then through the building macro to recereate the MiniBooNE data distributions.
 //
 // Output ROOT file saved to:
 //   /exp/uboone/app/users/jburridg/Geometry/Analysis/Forward_Folding_macros/
@@ -59,7 +65,7 @@ void process_trees()
     const int nbinsLEE = 11;
     double lee_bins[nbinsLEE+1] =
         {0.2, 0.3, 0.375, 0.475, 0.55, 0.675, 0.8,
-         0.95, 1.1, 1.3, 1.5, 3.0};
+         0.95, 1.1, 1.25, 1.5, 3.0};
 
     // ------------------------------------------------------------
     // Output histograms

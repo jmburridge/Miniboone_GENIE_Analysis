@@ -1,10 +1,24 @@
 // ============================================================================
-// Create all matrices (Nue, NCDelta, Pi0) in one go using MiniBooNE 2023 MC.
-// Modified so that:
-//   * Pi0 comes from the standard 10 "output_osc_mc_detail_X.root" files
-//   * Nue comes only from a dedicated Nue file
-//   * NCDelta comes only from a dedicated NCDelta file
-// Output ROOT + PNGs go into .../All/All_Filtered/ with "filtered" in names.
+// This is a macro to create all matrices (Nue, NCDelta, Pi0) in one go.
+// It uses MC files from MiniBooNE datasets 2023.
+//
+// Creating one macro to do all three to ensure orthogonal selections.
+// The theory issue is that when matrices are made separately, events can be
+// double-counted across channels (e.g. both Pi0 and NCDelta). By imposing
+// orthogonal selections, the normalisations should be more accurate and hence
+// give more accurate response matrices.
+//
+// ROOT files saved to:
+//   /exp/uboone/app/users/jburridg/Geometry/Analysis/Pi0/Pi0_Root_Files/
+//   /exp/uboone/app/users/jburridg/Geometry/Analysis/NCDelta/NCDelta_Root_Files/
+//   /exp/uboone/app/users/jburridg/Geometry/Analysis/Nue/Nue_Root_Files/
+// PNGs saved to:
+//   /exp/uboone/app/users/jburridg/Geometry/Analysis/Pi0/Pi0_Histograms/
+//   /exp/uboone/app/users/jburridg/Geometry/Analysis/NCDelta/NCDelta_Histograms/
+//   /exp/uboone/app/users/jburridg/Geometry/Analysis/Nue/Nue_Histograms/
+//
+// THIS MACRO USES THE MiniBooNE 2023 MC DATASET FILES:
+//   output_osc_mc_detail_1.root ... output_osc_mc_detail_10.root
 // ============================================================================
 
 #include <iostream>
@@ -21,9 +35,10 @@
 #include "TLegend.h"
 #include "TPad.h"
 
-#include "../../MiniBooNEDatasets2023/CombinedFunctions_from_Fortran/CombinedTypes.h"
-#include "../../MiniBooNEDatasets2023/CombinedFunctions_from_Fortran/CombinedFunctions.h"
-#include "../../MiniBooNEDatasets2023/CombinedFunctions_from_Fortran/CombinedFunctions.cxx"
+
+#include "/exp/uboone/app/users/jburridg/Geometry/Analysis/MiniBooNEDatasets2023/CombinedFunctions_from_Fortran/CombinedTypes.h"
+#include "/exp/uboone/app/users/jburridg/Geometry/AnalysisMiniBooNEDatasets2023/CombinedFunctions_from_Fortran/CombinedFunctions.h"
+#include "/exp/uboone/app/users/jburridg/Geometry/Analysis/MiniBooNEDatasets2023/CombinedFunctions_from_Fortran/CombinedFunctions.cxx"
 
 using namespace sp;
 
@@ -67,7 +82,7 @@ auto NormaliseByBinWidth = [](TH1D* h) {
 // -----------------------------------------------------------------------------
 // Main macro
 // -----------------------------------------------------------------------------
-void create_all_matrices_filtered()
+void create_all_matrices()
 {
     // GLOBAL STYLE
     gStyle->SetPalette(kInvertedDarkBodyRadiator);
@@ -157,6 +172,7 @@ void create_all_matrices_filtered()
         "Response Matrix (Reco vs True E);Reco E_{#nu}^{QE};True E_{#nu}",
         nbins_reco_pi0, recoE_bins_pi0, nbins_true_pi0, trueE_bins_pi0);
 
+    // (efficiency histos defined but not yet used)
     TH1D* h_eff_nue     = new TH1D("h_eff_nue",
         "Nue Efficiency;True E_{#nu} [GeV];Efficiency",
         nbins_true_nue,     trueE_bins_nue);
@@ -211,31 +227,23 @@ void create_all_matrices_filtered()
     long long totalEntries = 0;
 
     // -------------------------------------------------------------------------
-    // INPUT: dedicated files for Nue and NCDelta
-    // -------------------------------------------------------------------------
-    const char* nue_file =
-        "/exp/uboone/app/users/jburridg/Geometry/Analysis/MiniBooNEDatasets2023/miniboone_mc_all_nue_nuebar.root ";
-    const char* ncdelta_file =
-        "/exp/uboone/app/users/jburridg/Geometry/Analysis/MiniBooNEDatasets2023/miniboone_mc_all_ncdelta.root ";
-
-    // -------------------------------------------------------------------------
-    // 1) Pi0 from the standard 10 combined MC files (as before)
+    // File loop
     // -------------------------------------------------------------------------
     for (int fileIndex = 1; fileIndex <= 10; fileIndex++)
     {
         std::stringstream ss;
-        ss << "../../MiniBooNEDatasets2023/output_osc_mc_detail_"
+        ss << "/exp/uboone/app/users/jburridg/Geometry/Analysis/MiniBooNEDatasets2023/output_osc_mc_detail_"
            << fileIndex << ".root";
 
         TFile* f = TFile::Open(ss.str().c_str());
         if (!f || f->IsZombie()) {
-            std::cerr << "[Pi0] Failed to open file: " << ss.str() << std::endl;
+            std::cerr << "Failed to open file: " << ss.str() << std::endl;
             continue;
         }
 
         TTree* t = (TTree*)f->Get("MiniBooNE_CCQE");
         if (!t) {
-            std::cerr << "[Pi0] Could not find tree MiniBooNE_CCQE in file: "
+            std::cerr << "Could not find tree MiniBooNE_CCQE in file: "
                       << ss.str() << std::endl;
             f->Close();
             continue;
@@ -249,6 +257,7 @@ void create_all_matrices_filtered()
         std::vector<float> *Vx = nullptr, *Vy = nullptr, *Vz = nullptr;
         std::vector<float> *MomX = nullptr, *MomY = nullptr, *MomZ = nullptr, *MomT = nullptr;
 
+        // Branches
         t->SetBranchAddress("NFSP",      &NFSP);
         t->SetBranchAddress("FSPType",   &FSPType);
         t->SetBranchAddress("VertexX",   &Vx);
@@ -285,8 +294,11 @@ void create_all_matrices_filtered()
                                                (sp::NuType_t)NuType,
                                                (sp::GEANT3Type_t)NuParentID);
 
-            // Only use Pi0 events from these files
-            if (bkg_type == sp::kBKGD_PI0) {
+            // Note: NuMomT, RecoEnuQE assumed in GeV already.
+
+            switch (bkg_type) {
+
+            case sp::kBKGD_PI0:
                 h_total_true_pi0->Fill(NuMomT, Weight);
                 h_total_true_LEE_pi0->Fill(NuMomT, Weight);
                 if (PassOsc) {
@@ -298,214 +310,89 @@ void create_all_matrices_filtered()
                     h_pass_reco_LEE_pi0->Fill(RecoEnuQE, Weight);
                     h_response_E_LEE_pi0->Fill(RecoEnuQE, NuMomT, Weight);
                 }
-            }
-            else {
-                // This "other" category still exists, but now it's
-                // only populated by non-Pi0 events in the Pi0 loop.
+                break;
+
+            case sp::kBKGD_DELTA:
+                if((NuanceType_t)NUANCEChan == kCC1pNg) continue;
+                    h_total_true_ncdelta->Fill(NuMomT, Weight);
+                    h_total_true_LEE_ncdelta->Fill(NuMomT, Weight);
+                    if (PassOsc) {
+                        h_pass_true_ncdelta->Fill(NuMomT, Weight);
+                        h_pass_reco_ncdelta->Fill(RecoEnuQE, Weight);
+                        h_response_E_ncdelta->Fill(RecoEnuQE, NuMomT, Weight);
+                        // LEE binned
+                        h_pass_true_LEE_ncdelta->Fill(NuMomT, Weight);
+                        h_pass_reco_LEE_ncdelta->Fill(RecoEnuQE, Weight);
+                        h_response_E_LEE_ncdelta->Fill(RecoEnuQE, NuMomT, Weight);
+                    }
+                break;
+            case sp::kBKGD_NUEPIP:
+                if (NuParentID == 5 && NuType == 3) {
+                    h_total_true_nue->Fill(NuMomT, Weight);
+                    h_total_true_LEE_nue->Fill(NuMomT, Weight);
+                    if (PassOsc) {
+                        h_pass_true_nue->Fill(NuMomT, Weight);
+                        h_pass_reco_nue->Fill(RecoEnuQE, Weight);
+                        h_response_E_nue->Fill(RecoEnuQE, NuMomT, Weight);
+                        // LEE binned
+                        h_pass_true_LEE_nue->Fill(NuMomT, Weight);
+                        h_pass_reco_LEE_nue->Fill(RecoEnuQE, Weight);
+                        h_response_E_LEE_nue->Fill(RecoEnuQE, NuMomT, Weight);
+                    }
+                }
+                break;
+
+            case sp::kBKGD_NUEKP:
+                if (NuType == 3) {
+                    h_total_true_nue->Fill(NuMomT, Weight);
+                    h_total_true_LEE_nue->Fill(NuMomT, Weight);
+                    if (PassOsc) {
+                        h_pass_true_nue->Fill(NuMomT, Weight);
+                        h_pass_reco_nue->Fill(RecoEnuQE, Weight);
+                        h_response_E_nue->Fill(RecoEnuQE, NuMomT, Weight);
+                        // LEE binned
+                        h_pass_true_LEE_nue->Fill(NuMomT, Weight);
+                        h_pass_reco_LEE_nue->Fill(RecoEnuQE, Weight);
+                        h_response_E_LEE_nue->Fill(RecoEnuQE, NuMomT, Weight);
+                    }
+                }
+                break;
+
+            case sp::kBKGD_NUEK0:
+                if (NuType == 3) {
+                    h_total_true_nue->Fill(NuMomT, Weight);
+                    h_total_true_LEE_nue->Fill(NuMomT, Weight);
+                    if (PassOsc) {
+                        h_pass_true_nue->Fill(NuMomT, Weight);
+                        h_pass_reco_nue->Fill(RecoEnuQE, Weight);
+                        h_response_E_nue->Fill(RecoEnuQE, NuMomT, Weight);
+                        // LEE binned
+                        h_pass_true_LEE_nue->Fill(NuMomT, Weight);
+                        h_pass_reco_LEE_nue->Fill(RecoEnuQE, Weight);
+                        h_response_E_LEE_nue->Fill(RecoEnuQE, NuMomT, Weight);
+                    }
+                }
+                break;
+
+            default:
                 h_other->Fill(RecoEnuQE, Weight);
+                break;
             }
-        } // event loop (Pi0)
+        } // event loop
 
         f->Close();
-    } // file loop (Pi0)
+    } // file loop
 
-    // -------------------------------------------------------------------------
-    // 2) Nue from a dedicated Nue file
-    // -------------------------------------------------------------------------
-    {
-        TFile* f = TFile::Open(nue_file);
-        if (!f || f->IsZombie()) {
-            std::cerr << "[Nue] Failed to open file: " << nue_file << std::endl;
-        } else {
-            TTree* t = (TTree*)f->Get("MiniBooNE_CCQE");
-            if (!t) {
-                std::cerr << "[Nue] Could not find tree MiniBooNE_CCQE in file: "
-                          << nue_file << std::endl;
-            } else {
-                int   NFSP, NUANCEChan, NuType, NuParentID;
-                float Energy, RecoEnuQE, Weight, NuMomT;
-                bool  PassOsc;
+    // ========================================================================
+    // Clone raw (pre-normalisation) smearing matrices
+    // ========================================================================
+    TH2D* h_smearing_E_nue         = (TH2D*)h_response_E_nue->Clone("h_smearing_E_nue");
+    TH2D* h_smearing_E_ncdelta     = (TH2D*)h_response_E_ncdelta->Clone("h_smearing_E_ncdelta");
+    TH2D* h_smearing_pi0           = (TH2D*)h_response_pi0->Clone("h_smearing_pi0");
 
-                std::vector<int>   *FSPType = nullptr;
-                std::vector<float> *Vx = nullptr, *Vy = nullptr, *Vz = nullptr;
-                std::vector<float> *MomX = nullptr, *MomY = nullptr, *MomZ = nullptr, *MomT = nullptr;
-
-                t->SetBranchAddress("NFSP",      &NFSP);
-                t->SetBranchAddress("FSPType",   &FSPType);
-                t->SetBranchAddress("VertexX",   &Vx);
-                t->SetBranchAddress("VertexY",   &Vy);
-                t->SetBranchAddress("VertexZ",   &Vz);
-                t->SetBranchAddress("MomX",      &MomX);
-                t->SetBranchAddress("MomY",      &MomY);
-                t->SetBranchAddress("MomZ",      &MomZ);
-                t->SetBranchAddress("MomT",      &MomT);
-                t->SetBranchAddress("NUANCEChan",&NUANCEChan);
-                t->SetBranchAddress("NuType",    &NuType);
-                t->SetBranchAddress("NuMomT",    &NuMomT);
-                t->SetBranchAddress("NuParentID",&NuParentID);
-                t->SetBranchAddress("Energy",    &Energy);
-                t->SetBranchAddress("RecoEnuQE", &RecoEnuQE);
-                t->SetBranchAddress("Weight",    &Weight);
-                t->SetBranchAddress("PassOsc",   &PassOsc);
-
-                int N = t->GetEntries();
-                totalEntries += N;
-
-                for (int i = 0; i < N; i++)
-                {
-                    t->GetEntry(i);
-
-                    if (!CheckPointers(FSPType, Vx, Vy, Vz, MomX, MomY, MomZ, MomT))
-                        continue;
-
-                    unsigned isPi0 = sp::Pi0Details(NFSP, *FSPType, *Vx, *Vy, *Vz,
-                                                    *MomX, *MomY, *MomZ, *MomT);
-
-                    auto bkg_type = sp::StackHistoBkgd(false, isPi0,
-                                                       (sp::NuanceType_t)NUANCEChan,
-                                                       (sp::NuType_t)NuType,
-                                                       (sp::GEANT3Type_t)NuParentID);
-
-                    // Only keep the Nue-like backgrounds from this file
-                    switch (bkg_type) {
-
-                    case sp::kBKGD_NUEPIP:
-                    
-                        if (NuParentID == 5 && NuType == 3) {
-                            h_total_true_nue->Fill(NuMomT, Weight);
-                            h_total_true_LEE_nue->Fill(NuMomT, Weight);
-                            if (PassOsc) {
-                                h_pass_true_nue->Fill(NuMomT, Weight);
-                                h_pass_reco_nue->Fill(RecoEnuQE, Weight);
-                                h_response_E_nue->Fill(RecoEnuQE, NuMomT, Weight);
-                                // LEE binned
-                                h_pass_true_LEE_nue->Fill(NuMomT, Weight);
-                                h_pass_reco_LEE_nue->Fill(RecoEnuQE, Weight);
-                                h_response_E_LEE_nue->Fill(RecoEnuQE, NuMomT, Weight);
-                            }
-                        }
-                        break;
-
-                    case sp::kBKGD_NUEKP:
-                        if (NuType == 3) {
-                            h_total_true_nue->Fill(NuMomT, Weight);
-                            h_total_true_LEE_nue->Fill(NuMomT, Weight);
-                            if (PassOsc) {
-                                h_pass_true_nue->Fill(NuMomT, Weight);
-                                h_pass_reco_nue->Fill(RecoEnuQE, Weight);
-                                h_response_E_nue->Fill(RecoEnuQE, NuMomT, Weight);
-                                // LEE binned
-                                h_pass_true_LEE_nue->Fill(NuMomT, Weight);
-                                h_pass_reco_LEE_nue->Fill(RecoEnuQE, Weight);
-                                h_response_E_LEE_nue->Fill(RecoEnuQE, NuMomT, Weight);
-                            }
-                        }
-                        break;
-
-                    case sp::kBKGD_NUEK0:
-                        if (NuType == 3) {
-                            h_total_true_nue->Fill(NuMomT, Weight);
-                            h_total_true_LEE_nue->Fill(NuMomT, Weight);
-                            if (PassOsc) {
-                                h_pass_true_nue->Fill(NuMomT, Weight);
-                                h_pass_reco_nue->Fill(RecoEnuQE, Weight);
-                                h_response_E_nue->Fill(RecoEnuQE, NuMomT, Weight);
-                                // LEE binned
-                                h_pass_true_LEE_nue->Fill(NuMomT, Weight);
-                                h_pass_reco_LEE_nue->Fill(RecoEnuQE, Weight);
-                                h_response_E_LEE_nue->Fill(RecoEnuQE, NuMomT, Weight);
-                            }
-                        }
-                        break;
-
-                    default:
-                        // Ignore everything else in the Nue file
-                        break;
-                    }
-                } // event loop (Nue)
-            }
-
-            f->Close();
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // 3) NCDelta from a dedicated NCDelta file
-    // -------------------------------------------------------------------------
-    {
-        TFile* f = TFile::Open(ncdelta_file);
-        if (!f || f->IsZombie()) {
-            std::cerr << "[NCDelta] Failed to open file: " << ncdelta_file << std::endl;
-        } else {
-            TTree* t = (TTree*)f->Get("MiniBooNE_CCQE");
-            if (!t) {
-                std::cerr << "[NCDelta] Could not find tree MiniBooNE_CCQE in file: "
-                          << ncdelta_file << std::endl;
-            } else {
-                int   NFSP, NUANCEChan, NuType, NuParentID;
-                float Energy, RecoEnuQE, Weight, NuMomT;
-                bool  PassOsc;
-
-                std::vector<int>   *FSPType = nullptr;
-                std::vector<float> *Vx = nullptr, *Vy = nullptr, *Vz = nullptr;
-                std::vector<float> *MomX = nullptr, *MomY = nullptr, *MomZ = nullptr, *MomT = nullptr;
-
-                t->SetBranchAddress("NFSP",      &NFSP);
-                t->SetBranchAddress("FSPType",   &FSPType);
-                t->SetBranchAddress("VertexX",   &Vx);
-                t->SetBranchAddress("VertexY",   &Vy);
-                t->SetBranchAddress("VertexZ",   &Vz);
-                t->SetBranchAddress("MomX",      &MomX);
-                t->SetBranchAddress("MomY",      &MomY);
-                t->SetBranchAddress("MomZ",      &MomZ);
-                t->SetBranchAddress("MomT",      &MomT);
-                t->SetBranchAddress("NUANCEChan",&NUANCEChan);
-                t->SetBranchAddress("NuType",    &NuType);
-                t->SetBranchAddress("NuMomT",    &NuMomT);
-                t->SetBranchAddress("NuParentID",&NuParentID);
-                t->SetBranchAddress("Energy",    &Energy);
-                t->SetBranchAddress("RecoEnuQE", &RecoEnuQE);
-                t->SetBranchAddress("Weight",    &Weight);
-                t->SetBranchAddress("PassOsc",   &PassOsc);
-
-                int N = t->GetEntries();
-                totalEntries += N;
-
-                for (int i = 0; i < N; i++)
-                {
-                    t->GetEntry(i);
-
-                    if (!CheckPointers(FSPType, Vx, Vy, Vz, MomX, MomY, MomZ, MomT))
-                        continue;
-
-                    unsigned isPi0 = sp::Pi0Details(NFSP, *FSPType, *Vx, *Vy, *Vz,
-                                                    *MomX, *MomY, *MomZ, *MomT);
-
-                    auto bkg_type = sp::StackHistoBkgd(false, isPi0,
-                                                       (sp::NuanceType_t)NUANCEChan,
-                                                       (sp::NuType_t)NuType,
-                                                       (sp::GEANT3Type_t)NuParentID);
-
-                    // Only Delta background from this file
-                    if (bkg_type == sp::kBKGD_DELTA) {
-                        h_total_true_ncdelta->Fill(NuMomT, Weight);
-                        h_total_true_LEE_ncdelta->Fill(NuMomT, Weight);
-                        if (PassOsc) {
-                            h_pass_true_ncdelta->Fill(NuMomT, Weight);
-                            h_pass_reco_ncdelta->Fill(RecoEnuQE, Weight);
-                            h_response_E_ncdelta->Fill(RecoEnuQE, NuMomT, Weight);
-                            // LEE binned
-                            h_pass_true_LEE_ncdelta->Fill(NuMomT, Weight);
-                            h_pass_reco_LEE_ncdelta->Fill(RecoEnuQE, Weight);
-                            h_response_E_LEE_ncdelta->Fill(RecoEnuQE, NuMomT, Weight);
-                        }
-                    }
-                } // event loop (NCDelta)
-            }
-
-            f->Close();
-        }
-    }
+    TH2D* h_smearing_E_LEE_nue     = (TH2D*)h_response_E_LEE_nue->Clone("h_smearing_E_LEE_nue");
+    TH2D* h_smearing_E_LEE_ncdelta = (TH2D*)h_response_E_LEE_ncdelta->Clone("h_smearing_E_LEE_ncdelta");
+    TH2D* h_smearing_E_LEE_pi0     = (TH2D*)h_response_E_LEE_pi0->Clone("h_smearing_E_LEE_pi0");
 
     // -------------------------------------------------------------------------
     // Normalise response matrices (per true bin)
@@ -538,35 +425,23 @@ void create_all_matrices_filtered()
     }
 
     // LEE-binned normalisation
-    for (int iy = 1; iy <= lee_nbins; iy++) {
-        double den = h_total_true_LEE_nue->GetBinContent(iy);
-        if (den <= 0) continue;
-        for (int ix = 1; ix <= lee_nbins; ix++) {
-            double val = h_response_E_LEE_nue->GetBinContent(ix, iy) / den;
-            h_response_E_LEE_nue->SetBinContent(ix, iy, val);
+    auto NormLEE = [&](TH1D* htot, TH2D* hresp){
+        for (int iy = 1; iy <= lee_nbins; iy++) {
+            double den = htot->GetBinContent(iy);
+            if (den <= 0) continue;
+            for (int ix = 1; ix <= lee_nbins; ix++) {
+                double val = hresp->GetBinContent(ix, iy) / den;
+                hresp->SetBinContent(ix, iy, val);
+            }
         }
-    }
+    };
 
-    for (int iy = 1; iy <= lee_nbins; iy++) {
-        double den = h_total_true_LEE_ncdelta->GetBinContent(iy);
-        if (den <= 0) continue;
-        for (int ix = 1; ix <= lee_nbins; ix++) {
-            double val = h_response_E_LEE_ncdelta->GetBinContent(ix, iy) / den;
-            h_response_E_LEE_ncdelta->SetBinContent(ix, iy, val);
-        }
-    }
-
-    for (int iy = 1; iy <= lee_nbins; iy++) {
-        double den = h_total_true_LEE_pi0->GetBinContent(iy);
-        if (den <= 0) continue;
-        for (int ix = 1; ix <= lee_nbins; ix++) {
-            double val = h_response_E_LEE_pi0->GetBinContent(ix, iy) / den;
-            h_response_E_LEE_pi0->SetBinContent(ix, iy, val);
-        }
-    }
+    NormLEE(h_total_true_LEE_nue,     h_response_E_LEE_nue);
+    NormLEE(h_total_true_LEE_ncdelta, h_response_E_LEE_ncdelta);
+    NormLEE(h_total_true_LEE_pi0,     h_response_E_LEE_pi0);
 
     // -------------------------------------------------------------------------
-    // Indexed response matrices
+    // Indexed response matrices (normalised)
     // -------------------------------------------------------------------------
     TH2D* h_response_E_idx_nue =
         new TH2D("h_response_E_idx_nue",";Reco E bin;True E bin",
@@ -586,10 +461,30 @@ void create_all_matrices_filtered()
                  nbins_true_pi0, 0, nbins_true_pi0);
     CopyAndLabelIndexed(h_response_pi0, h_response_E_idx_pi0);
 
-    // ======================================================================
-    // Cloned histograms for Events per MeV (EpMeV)
-    // ======================================================================
+    // -------------------------------------------------------------------------
+    // Indexed RAW smearing matrices (standard binning)
+    // -------------------------------------------------------------------------
+    TH2D* h_smearing_E_idx_nue =
+        new TH2D("smearing_nue_idx",";Reco E bin;True E bin",
+                 nbins_reco_nue, 0, nbins_reco_nue,
+                 nbins_true_nue, 0, nbins_true_nue);
+    CopyAndLabelIndexed(h_smearing_E_nue, h_smearing_E_idx_nue);
 
+    TH2D* h_smearing_E_idx_ncdelta =
+        new TH2D("smearing_ncdelta_idx",";Reco E bin;True E bin",
+                 nbins_reco_ncdelta, 0, nbins_reco_ncdelta,
+                 nbins_true_ncdelta, 0, nbins_true_ncdelta);
+    CopyAndLabelIndexed(h_smearing_E_ncdelta, h_smearing_E_idx_ncdelta);
+
+    TH2D* h_smearing_E_idx_pi0 =
+        new TH2D("smearing_pi0_idx",";Reco E bin;True E bin",
+                 nbins_reco_pi0, 0, nbins_reco_pi0,
+                 nbins_true_pi0, 0, nbins_true_pi0);
+    CopyAndLabelIndexed(h_smearing_pi0, h_smearing_E_idx_pi0);
+    
+    // -------------------------------------------------------------------------
+    // Events per MeV histograms
+    // -------------------------------------------------------------------------
     auto h_total_true_nue_EpMeV     = (TH1D*)h_total_true_nue->Clone("h_total_true_nue_EpMeV");
     auto h_pass_true_nue_EpMeV      = (TH1D*)h_pass_true_nue->Clone("h_pass_true_nue_EpMeV");
     auto h_pass_reco_nue_EpMeV      = (TH1D*)h_pass_reco_nue->Clone("h_pass_reco_nue_EpMeV");
@@ -614,16 +509,16 @@ void create_all_matrices_filtered()
     NormaliseByBinWidth(h_pass_true_pi0_EpMeV);
     NormaliseByBinWidth(h_pass_reco_pi0_EpMeV);
 
-
     // -------------------------------------------------------------------------
-    // Output directories (now All_Filtered)
+    // Output directories
     // -------------------------------------------------------------------------
     const char* png_dir  =
         "../../Outputs/Response_matrices/Osc1-10/Histograms";
     const char* root_dir =
         "../../Outputs/Response_matrices/Osc1-10/Root_files";
+
     // -------------------------------------------------------------------------
-    // Plotting helpers (filenames contain 'filtered')
+    // Plotting helpers
     // -------------------------------------------------------------------------
     auto SaveMatrix = [&](TH2* h, const char* fname){
         TCanvas* c = new TCanvas(fname, fname, 900, 800);
@@ -633,7 +528,7 @@ void create_all_matrices_filtered()
         c->SetTopMargin(0.08);
         h->LabelsOption("h");
         h->Draw("COLZ");
-        std::string out = std::string(png_dir) + fname + "_filtered.png";
+        std::string out = std::string(png_dir) + fname + "_all.png";
         c->SaveAs(out.c_str());
         delete c;
     };
@@ -645,7 +540,7 @@ void create_all_matrices_filtered()
         c->SetBottomMargin(0.14);
         c->SetTopMargin(0.08);
         h->Draw("HIST E");
-        std::string out = std::string(png_dir) + fname + "_filtered.png";
+        std::string out = std::string(png_dir) + fname + "_all.png";
         c->SaveAs(out.c_str());
         delete c;
     };
@@ -653,6 +548,7 @@ void create_all_matrices_filtered()
     // -------------------------------------------------------------------------
     // Save PNGs
     // -------------------------------------------------------------------------
+    // Normalised response matrices
     SaveMatrix(h_response_E_nue,        "Nue_ResponseMatrix_Energy");
     SaveMatrix(h_response_E_idx_nue,    "Nue_ResponseMatrix_Energy_Indexed");
     SaveMatrix(h_response_E_LEE_nue,    "Nue_ResponseMatrix_Energy_LEE");
@@ -665,6 +561,12 @@ void create_all_matrices_filtered()
     SaveMatrix(h_response_E_idx_pi0,    "Pi0_ResponseMatrix_Energy_Indexed");
     SaveMatrix(h_response_E_LEE_pi0,    "Pi0_ResponseMatrix_Energy_LEE");
 
+    // Indexed RAW matrices (standard binning)
+    SaveMatrix(h_smearing_E_idx_nue,     "Nue_SmearingMatrix_Energy_Indexed");
+    SaveMatrix(h_smearing_E_idx_ncdelta, "NCDelta_SmearingMatrix_Energy_Indexed");
+    SaveMatrix(h_smearing_E_idx_pi0,     "Pi0_SmearingMatrix_Energy_Indexed");
+
+    // 1D spectra
     Save1D(h_total_true_nue,     "Nue_TrueEnergy_Total");
     Save1D(h_pass_true_nue,      "Nue_TrueEnergy_Passed");
     Save1D(h_pass_reco_nue,      "Nue_RecoEnergy_Passed");
@@ -677,8 +579,7 @@ void create_all_matrices_filtered()
     Save1D(h_pass_true_pi0,      "Pi0_TrueEnergy_Passed");
     Save1D(h_pass_reco_pi0,      "Pi0_RecoEnergy_Passed");
 
-
-    // Save EpMeV PNGs
+    // EpMeV spectra
     Save1D(h_total_true_nue_EpMeV,     "Nue_TrueEnergy_Total_EpMeV");
     Save1D(h_pass_true_nue_EpMeV,      "Nue_TrueEnergy_Passed_EpMeV");
     Save1D(h_pass_reco_nue_EpMeV,      "Nue_RecoEnergy_Passed_EpMeV");
@@ -692,10 +593,10 @@ void create_all_matrices_filtered()
     Save1D(h_pass_reco_pi0_EpMeV,      "Pi0_RecoEnergy_Passed_EpMeV");
 
     // -------------------------------------------------------------------------
-    // ROOT output files (names contain 'filtered')
+    // ROOT output files
     // -------------------------------------------------------------------------
     {
-        std::string outfile1 = std::string(root_dir) + "all_filtered.root";
+        std::string outfile1 = std::string(root_dir) + "all.root";
         TFile out1(outfile1.c_str(), "RECREATE");
 
         h_total_true_nue->Write("total_true_nue");
@@ -710,13 +611,24 @@ void create_all_matrices_filtered()
         h_pass_reco_ncdelta->Write("pass_reco_ncdelta");
         h_pass_reco_pi0->Write("pass_reco_pi0");
 
+        // Normalised response matrices
         h_response_E_nue->Write("response_nue");
         h_response_E_ncdelta->Write("response_ncdelta");
         h_response_pi0->Write("response_pi0");
 
+        // Raw (pre-normalisation) response matrices
+        h_smearing_E_nue->Write("smearing_nue");
+        h_smearing_E_ncdelta->Write("smearing_ncdelta");
+        h_smearing_pi0->Write("smearing_pi0");
+
+        // Indexed RAW (standard-binning) matrices
+        h_smearing_E_idx_nue->Write("smearing_nue_idx");
+        h_smearing_E_idx_ncdelta->Write("smearing_ncdelta_idx");
+        h_smearing_E_idx_pi0->Write("smearing_pi0_idx");
+
         out1.Close();
 
-        std::string outfile2 = std::string(root_dir) + "response_LEE_all_filtered.root";
+        std::string outfile2 = std::string(root_dir) + "response_LEE_all.root";
         TFile out2(outfile2.c_str(), "RECREATE");
 
         h_total_true_LEE_nue->Write("total_true_LEE_nue");
@@ -735,9 +647,13 @@ void create_all_matrices_filtered()
         h_response_E_LEE_ncdelta->Write("response_LEE_ncdelta");
         h_response_E_LEE_pi0->Write("response_LEE_pi0");
 
+        // Raw LEE response matrices (no indexed LEE raw requested)
+        h_smearing_E_LEE_nue->Write("smearing_LEE_nue");
+        h_smearing_E_LEE_ncdelta->Write("smearing_LEE_ncdelta");
+        h_smearing_E_LEE_pi0->Write("smearing_LEE_pi0");
+
         out2.Close();
     }
 
-    std::cout << "Done! Total entries processed (all files): "
-              << totalEntries << std::endl;
+    std::cout << "Done!" << std::endl;
 }

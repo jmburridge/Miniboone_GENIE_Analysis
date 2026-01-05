@@ -9,10 +9,7 @@ A Generator-based Investigation into the MiniBooNE Low-Energy Excess using GENIE
 - [Getting Started](#getting-started)
 - [Installation](#installation)
 - [Usage](#usage)
-- [Configuration](#configuration)
 - [Project Structure](#project-structure)
-- [Roadmap](#roadmap)
-- [Contributing](#contributing)
 - [Acknowledgements](#acknowledgements)
 
 ---

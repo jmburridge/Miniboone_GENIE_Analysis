@@ -7,11 +7,11 @@
 ///////////////////////////////////////////////////////
 // ============================================================================
 // MiniBooNE Background Stack Constructor (Corrected Final Version)
-// - Dirt & Other: weighted + exposure scaling
-// - Pi0 / Delta / intrinsic nue: from forward-folding, NOT scaled
+// - Dirt & Other: weighted + POT scaled
+// - Pi0 / Delta / intrinsic nue: from forward-folding, POT scaled (check this)
 // - All MC histograms rebinned into identical 200–3000 MeV bins
-// - MiniBooNE curve from text, converted to Events/MeV
-// - Stacks safely without axis-limit errors
+// - MiniBooNE 'dirt' and 'other' hists from text files (MiniBooNEDatasets2023), converted to Events/MeV
+// - Stacks all baclground categories correctly
 // ============================================================================
 
 #include "TFile.h"

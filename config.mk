@@ -1,5 +1,5 @@
 # ---------------------------------------------------------
-#  # Shared configuration variables for all Makefiles
+#  #Config file for makefile
 # ---------------------------------------------------------
 #
 #  # Directories
@@ -10,7 +10,7 @@ DATA_DIR    = data
 TEST_DIR    = test
 # MiniBooNE tuples live here
 MB_DATASET_DIR = /exp/uboone/app/users/jburridg/Geometry/Analysis/MiniBooNEDatasets2023
-# Where you want matrices and plots written (project-local is best)
+# Where matrices and plots written
 MATRIX_DIR  = matrices
 PLOT_DIR    = plots/matrices
 # Dataset file pattern

@@ -20,6 +20,7 @@
 // THIS MACRO USES THE MiniBooNE 2023 MC DATASET FILES:
 //   output_osc_mc_detail_1.root ... output_osc_mc_detail_10.root
 // ============================================================================
+#include "config.h"
 
 #include <iostream>
 #include <vector>
@@ -35,10 +36,9 @@
 #include "TLegend.h"
 #include "TPad.h"
 
-
-#include "/exp/uboone/app/users/jburridg/Geometry/Analysis/MiniBooNEDatasets2023/CombinedFunctions_from_Fortran/CombinedTypes.h"
-#include "/exp/uboone/app/users/jburridg/Geometry/AnalysisMiniBooNEDatasets2023/CombinedFunctions_from_Fortran/CombinedFunctions.h"
-#include "/exp/uboone/app/users/jburridg/Geometry/Analysis/MiniBooNEDatasets2023/CombinedFunctions_from_Fortran/CombinedFunctions.cxx"
+#include COMBINED_FUNCTIONS_H
+#include COMBINED_TYPES_H
+#include COMBINED_FUNCTIONS_CXX
 
 using namespace sp;
 
@@ -232,8 +232,7 @@ void create_all_matrices()
     for (int fileIndex = 1; fileIndex <= 10; fileIndex++)
     {
         std::stringstream ss;
-        ss << "/exp/uboone/app/users/jburridg/Geometry/Analysis/MiniBooNEDatasets2023/output_osc_mc_detail_"
-           << fileIndex << ".root";
+        ss << OSC_MC_PREFIX << fileIndex << ".root";
 
         TFile* f = TFile::Open(ss.str().c_str());
         if (!f || f->IsZombie()) {
@@ -512,10 +511,8 @@ void create_all_matrices()
     // -------------------------------------------------------------------------
     // Output directories
     // -------------------------------------------------------------------------
-    const char* png_dir  =
-        "../../Outputs/Response_matrices/Osc1-10/Histograms";
-    const char* root_dir =
-        "../../Outputs/Response_matrices/Osc1-10/Root_files";
+   const char* png_dir  = MATRIX_PNG_OUTPUT_DIR;
+   const char* root_dir = MATRIX_ROOT_OUTPUT_DIR;
 
     // -------------------------------------------------------------------------
     // Plotting helpers
@@ -528,7 +525,8 @@ void create_all_matrices()
         c->SetTopMargin(0.08);
         h->LabelsOption("h");
         h->Draw("COLZ");
-        std::string out = std::string(png_dir) + fname + "_all.png";
+        std::string out = std::string(png_dir) + "/" + fname + "_all.png";
+
         c->SaveAs(out.c_str());
         delete c;
     };
@@ -540,7 +538,7 @@ void create_all_matrices()
         c->SetBottomMargin(0.14);
         c->SetTopMargin(0.08);
         h->Draw("HIST E");
-        std::string out = std::string(png_dir) + fname + "_all.png";
+        std::string out = std::string(png_dir) + "/" + fname + "_all.png";
         c->SaveAs(out.c_str());
         delete c;
     };
@@ -596,7 +594,7 @@ void create_all_matrices()
     // ROOT output files
     // -------------------------------------------------------------------------
     {
-        std::string outfile1 = std::string(root_dir) + "all.root";
+        std::string outfile1 = std::string(root_dir) + "/all.root";
         TFile out1(outfile1.c_str(), "RECREATE");
 
         h_total_true_nue->Write("total_true_nue");
@@ -628,7 +626,7 @@ void create_all_matrices()
 
         out1.Close();
 
-        std::string outfile2 = std::string(root_dir) + "response_LEE_all.root";
+        std::string outfile2 = std::string(root_dir) + "/response_LEE_all.root";
         TFile out2(outfile2.c_str(), "RECREATE");
 
         h_total_true_LEE_nue->Write("total_true_LEE_nue");

@@ -27,6 +27,7 @@
 // Output ROOT file saved to:
 //   /exp/uboone/app/users/jburridg/Geometry/Analysis/Forward_Folding_macros/
 // ============================================================================
+#include "config.h"
 
 #include <iostream>
 #include <vector>
@@ -37,9 +38,9 @@
 #include "TH1D.h"
 #include "TStyle.h"
 
-#include "../MiniBooNEDatasets2023/CombinedFunctions_from_Fortran/CombinedTypes.h"
-#include "../MiniBooNEDatasets2023/CombinedFunctions_from_Fortran/CombinedFunctions.h"
-#include "../MiniBooNEDatasets2023/CombinedFunctions_from_Fortran/CombinedFunctions.cxx"
+#include COMBINED_TYPES_H
+#include COMBINED_FUNCTIONS_H
+#include COMBINED_FUNCTIONS_CXX
 
 using namespace sp;
 
@@ -96,8 +97,7 @@ void process_trees()
     for (int fileIndex = 1; fileIndex <= 10; ++fileIndex)
     {
         std::stringstream ss;
-        ss << "../MiniBooNEDatasets2023/output_osc_mc_detail_"
-           << fileIndex << ".root";
+        ss << OSC_MC_PREFIX << fileIndex << ".root";
 
         TFile* f = TFile::Open(ss.str().c_str());
         if (!f || f->IsZombie())
@@ -207,10 +207,7 @@ void process_trees()
     // ------------------------------------------------------------
     // Output ROOT file
     // ------------------------------------------------------------
-    const char* root_dir =
-        "/exp/uboone/app/users/jburridg/Geometry/Analysis/Forward_Folding_macros/";
-
-    std::string outfile = std::string(root_dir) + "truth_trees_for_FF.root";
+    std::string outfile = std::string(TEST_CACHE_DIR) + "/" + PATH_FF_TREES_NUANCE;
     TFile fout(outfile.c_str(), "RECREATE");
 
     h_true_nue_LEE->Write();

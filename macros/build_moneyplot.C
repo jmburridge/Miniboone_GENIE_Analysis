@@ -13,6 +13,7 @@
 // - MiniBooNE 'dirt' and 'other' hists from text files (MiniBooNEDatasets2023), converted to Events/MeV
 // - Stacks all baclground categories correctly
 // ============================================================================
+#include "config.h"
 
 #include "TFile.h"
 #include "TTree.h"
@@ -23,9 +24,9 @@
 #include "TStyle.h"
 #include "TAxis.h"
 
-#include "../MiniBooNEDatasets2023/CombinedFunctions_from_Fortran/CombinedFunctions.h"
-#include "../MiniBooNEDatasets2023/CombinedFunctions_from_Fortran/CombinedFunctions.cxx"
-#include "../MiniBooNEDatasets2023/CombinedFunctions_from_Fortran/CombinedTypes.h"
+#include COMBINED_FUNCTIONS_H
+#include COMBINED_TYPES_H
+#include COMBINED_FUNCTIONS_CXX
 
 #include <fstream>
 #include <iostream>
@@ -152,7 +153,7 @@ TH1D* RebinToLEE(const TH1D* src, const char* newName)
 // ============================================================================
 void Add_External_Dirt(TH1D* hDirt)
 {
-    TFile* df = TFile::Open("../MiniBooNEDatasets2023/miniboone_mc_dirt_postccqe.root");
+    TFile* df = TFile::Open("/exp/uboone/app/users/jburridg/Geometry/Analysis/MiniBooNEDatasets2023/miniboone_mc_dirt_postccqe.root");
     if (!df || df->IsZombie()) return;
 
     TTree* t = (TTree*)df->Get("MiniBooNBE_CCQE");
@@ -231,7 +232,7 @@ void build_miniboone_plot()
     TH1D* hNue   = RebinToLEE(hNue_raw,   "hNue");
 
     // Load MiniBooNE reference
-    TH1D* hMB = Read_MB_Text("../Archive/DigitisePlot/nu_lee2018_numode_background.txt");
+    TH1D* hMB = Read_MB_Text("/exp/uboone/app/users/jburridg/Geometry/Analysis/Archive/DigitisePlot/nu_lee2018_numode_background.txt");
 
     // Convert MC → Events/MeV
     for (TH1D* h : {hDirt, hOther, hDelta, hNue, hPi0}) //hDelta, hNue, hPi0

@@ -31,6 +31,7 @@
 //
 // Produces: forward_folds_output.root
 // ============================================================================
+#include "config.h"
 
 #include "TFile.h"
 #include "TH1D.h"

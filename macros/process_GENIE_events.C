@@ -35,3 +35,8 @@
 //
 /////////////////////////////////////////////////////////////////  
 
+// This macro will do somehting similar to the process_NUANCE_events.C macro, 
+// except for the fake data and real GENIE events. 
+// It is dependant on the structure of the genie event root files.
+// It will use different functions to define subcategories of events, like Pi0, NCDelta, Nue.
+// It will output root files containing the truth spectra for each background category.

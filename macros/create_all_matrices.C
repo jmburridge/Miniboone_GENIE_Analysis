@@ -297,19 +297,23 @@ void create_all_matrices()
 
             switch (bkg_type) {
 
-            case sp::kBKGD_PI0:
+            case sp::kBKGD_PI0: {
+            const NuanceType_t evwt = (NuanceType_t)NUANCEChan;
+                // Keep only neutrino NC 1pi0 channels
+                if (!(evwt == kNC1p1pi0 || evwt == kNC1n1pi0)) continue;
                 h_total_true_pi0->Fill(NuMomT, Weight);
                 h_total_true_LEE_pi0->Fill(NuMomT, Weight);
                 if (PassOsc) {
                     h_pass_true_pi0->Fill(NuMomT, Weight);
                     h_pass_reco_pi0->Fill(RecoEnuQE, Weight);
                     h_response_pi0->Fill(RecoEnuQE, NuMomT, Weight);
-                    // LEE binned
                     h_pass_true_LEE_pi0->Fill(NuMomT, Weight);
                     h_pass_reco_LEE_pi0->Fill(RecoEnuQE, Weight);
                     h_response_E_LEE_pi0->Fill(RecoEnuQE, NuMomT, Weight);
                 }
                 break;
+            }
+
 
             case sp::kBKGD_DELTA:
                 if((NuanceType_t)NUANCEChan == kCC1pNg) continue;

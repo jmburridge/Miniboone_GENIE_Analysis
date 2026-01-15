@@ -184,13 +184,18 @@ void process_trees()
             // ----------------------------------------------------
             if (bkg == kBKGD_PI0)
             {
+                const NuanceType_t evwt = (NuanceType_t)NUANCEChan;
+                if (!(evwt == kNC1p1pi0 || evwt == kNC1n1pi0)) continue;
                 h_true_pi0_LEE->Fill(NuMomT, Weight);
                 ++count_pi0;
+                //break; //is this correct? processing only one background type per event?
             }
             else if (bkg == kBKGD_DELTA)
             {
+                if((NuanceType_t)NUANCEChan == kCC1pNg) continue;
                 h_true_ncdelta_LEE->Fill(NuMomT, Weight);
                 ++count_ncdelta;
+                //break; //is this correct? processing only one background type per event?
             }
             else if (bkg == kBKGD_NUEPIP ||
                      bkg == kBKGD_NUEKP  ||
